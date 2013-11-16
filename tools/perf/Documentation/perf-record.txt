@@ -207,6 +207,13 @@ Force the use of per-cpu mmaps.  By default, when tasks are specified (i.e. -p,
 forces per-cpu mmaps.  A side-effect of that is that inheritance is
 automatically enabled.  Add the -i option also to disable inheritance.
 
+-O::
+--out-pages=::
+Number of pages to mmap for writing data to file or size specification
+with appended unit character - B/K/M/G. The size is rounded up to have nearest
+pages power of two value. 0 falls back to write instead of mmap. Default size
+is 64M.
+
 SEE ALSO
 --------
 linkperf:perf-stat[1], linkperf:perf-list[1]

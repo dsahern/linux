@@ -767,6 +767,29 @@ int perf_evlist__parse_mmap_pages(const struct option *opt, const char *str,
 	return 0;
 }
 
+int perf_evlist__parse_out_pages(const struct option *opt, const char *str,
+				  int unset __maybe_unused)
+{
+	unsigned int *out_pages = opt->value;
+	unsigned long max = UINT_MAX;
+	long pages;
+
+	if (max < SIZE_MAX / page_size)
+		max = SIZE_MAX / page_size;
+
+	pages = parse_pages_arg(str, 0, max);
+	if (pages < 0) {
+		pr_err("Invalid argument for --out-pages/-O\n");
+		return -1;
+	}
+
+	if (pages == 0)
+		pr_debug("Reverting to write instead of mmap for output file\n");
+
+	*out_pages = pages;
+	return 0;
+}
+
 /**
  * perf_evlist__mmap - Create mmaps to receive events.
  * @evlist: list of events

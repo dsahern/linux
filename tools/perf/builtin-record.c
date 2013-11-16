@@ -30,6 +30,9 @@
 #include <sched.h>
 #include <sys/mman.h>
 
+/* output file mmap'ed N chunks at a time */
+#define MMAP_OUTPUT_SIZE   (64*1024*1024)
+
 #ifndef HAVE_ON_EXIT_SUPPORT
 #ifndef ATEXIT_MAX
 #define ATEXIT_MAX 32
@@ -65,6 +68,16 @@ static void __handle_on_exit_funcs(void)
 struct perf_record {
 	struct perf_tool	tool;
 	struct perf_record_opts	opts;
+
+	/* for MMAP based file writes */
+	struct {
+		void		*addr;
+		u64		offset;     /* current location within mmap */
+		unsigned int	out_pages;  /* user configurable option */
+		size_t		out_size;   /* size of mmap segments */
+		bool		use;
+	} mmap;
+
 	u64			bytes_written;
 	struct perf_data_file	file;
 	struct perf_evlist	*evlist;
@@ -75,6 +88,95 @@ struct perf_record {
 	bool			no_buildid_cache;
 	long			samples;
 };
+
+static int mmap_next_segment(struct perf_record *rec, off_t offset)
+{
+	struct perf_data_file *file = &rec->file;
+
+	/* extend file to include a new mmap segment */
+	if (ftruncate(file->fd, offset + rec->mmap.out_size) != 0) {
+		pr_err("ftruncate failed\n");
+		return -1;
+	}
+
+	rec->mmap.addr = mmap(NULL, rec->mmap.out_size,
+			      PROT_WRITE | PROT_READ, MAP_SHARED,
+			      file->fd, offset);
+
+	if (rec->mmap.addr == MAP_FAILED) {
+		pr_err("mmap failed: %d: %s\n", errno, strerror(errno));
+
+		/* reset file size */
+		if (ftruncate(file->fd, offset) != 0)
+			pr_err("ftruncate failed too. Is it Halloween?\n");
+
+		return -1;
+	}
+
+	return 0;
+}
+
+static off_t next_mmap_offset(struct perf_record *rec)
+{
+	off_t offset;
+
+	/*
+	 * for first segment, mmap offset is current amount of data
+	 * already written to file. For follow on segments the output
+	 * starts at 0.
+	 */
+	offset = rec->session->header.data_offset + rec->bytes_written;
+	if (offset < (ssize_t) rec->mmap.out_size) {
+		rec->mmap.offset = offset;
+		offset = 0;
+	} else {
+		rec->mmap.offset = 0;
+	}
+
+	/* returning offset within file - used for mmap of next segment */
+	return offset;
+}
+
+static int do_mmap_output(struct perf_record *rec, void *buf, size_t size)
+{
+	u64 remaining;
+	off_t offset;
+
+	if (rec->mmap.addr == NULL) {
+next_segment:
+		offset = next_mmap_offset(rec);
+		if (mmap_next_segment(rec, offset) != 0)
+			return -1;
+	}
+
+	/* amount of space in current mmap segment */
+	remaining = rec->mmap.out_size - rec->mmap.offset;
+
+	/*
+	 * if current size to write is more than the available
+	 * space write what we can then go back and create the
+	 * next segment
+	 */
+	if (size > remaining) {
+		memcpy(rec->mmap.addr + rec->mmap.offset, buf, remaining);
+		rec->bytes_written += remaining;
+
+		size -= remaining;
+		buf  += remaining;
+
+		munmap(rec->mmap.addr, rec->mmap.out_size);
+		goto next_segment;
+	}
+
+	/* more data to copy and it fits in the current segment */
+	if (size) {
+		memcpy(rec->mmap.addr + rec->mmap.offset, buf, size);
+		rec->bytes_written += size;
+		rec->mmap.offset += size;
+	}
+
+	return 0;
+}
 
 static int do_write_output(struct perf_record *rec, void *buf, size_t size)
 {
@@ -99,6 +201,9 @@ static int do_write_output(struct perf_record *rec, void *buf, size_t size)
 
 static int write_output(struct perf_record *rec, void *buf, size_t size)
 {
+	if (rec->mmap.use)
+		return do_mmap_output(rec, buf, size);
+
 	return do_write_output(rec, buf, size);
 }
 
@@ -361,6 +466,52 @@ static void perf_record__init_features(struct perf_record *rec)
 		perf_header__clear_feat(&session->header, HEADER_BRANCH_STACK);
 }
 
+static int mmap_output_fini(struct perf_record *rec)
+{
+	off_t len;
+	int fd;
+
+	if (!rec->mmap.use)
+		return 0;
+
+	rec->mmap.use = false;
+
+	len = rec->session->header.data_offset + rec->bytes_written;
+	fd = rec->file.fd;
+
+	munmap(rec->mmap.addr, rec->mmap.out_size);
+	rec->mmap.addr = NULL;
+
+	if (ftruncate(fd, len) != 0) {
+		pr_err("ftruncate failed\n");
+		return -1;
+	}
+
+	/*
+	 * Set output pointer to end of file
+	 * eg., needed for buildid processing
+	 */
+	if (lseek(fd, 0, SEEK_END) == (off_t) -1) {
+		pr_err("ftruncate failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void mmap_output_init(struct perf_record *rec)
+{
+	struct perf_data_file *file = &rec->file;
+
+	if (file->is_pipe)
+		return;
+
+	rec->mmap.out_size = rec->mmap.out_pages * page_size;
+
+	if (rec->mmap.out_size)
+		rec->mmap.use = true;
+}
+
 static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 {
 	int err;
@@ -433,6 +584,8 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 		err = -1;
 		goto out_delete_session;
 	}
+
+	mmap_output_init(rec);
 
 	machine = &session->machines.host;
 
@@ -539,6 +692,11 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 			perf_evlist__disable(evsel_list);
 			disabled = true;
 		}
+	}
+
+	if (mmap_output_fini(rec) != 0) {
+		err = -1;
+		goto out_delete_session;
 	}
 
 	if (quiet || signr == SIGUSR1)
@@ -802,6 +960,9 @@ static struct perf_record record = {
 			.uses_mmap   = true,
 		},
 	},
+	.mmap = {
+		.out_size = MMAP_OUTPUT_SIZE,
+	},
 };
 
 #define CALLCHAIN_HELP "setup and enables call-graph (stack chain/backtrace) recording: "
@@ -890,6 +1051,9 @@ const struct option record_options[] = {
 		    "sample transaction flags (special events only)"),
 	OPT_BOOLEAN(0, "force-per-cpu", &record.opts.target.force_per_cpu,
 		    "force the use of per-cpu mmaps"),
+	OPT_CALLBACK('O', "out-pages", &record.mmap.out_pages, "pages",
+		"Number of pages or size with units to use for output (default 64M)",
+		perf_evlist__parse_out_pages),
 	OPT_END()
 };
 
@@ -905,6 +1069,7 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 		return -ENOMEM;
 
 	rec->evlist = evsel_list;
+	rec->mmap.out_pages = rec->mmap.out_size / page_size;
 
 	argc = parse_options(argc, argv, record_options, record_usage,
 			    PARSE_OPT_STOP_AT_NON_OPTION);
