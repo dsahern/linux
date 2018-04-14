@@ -755,4 +755,5 @@ static inline void bond_tx_drop(struct net_device *dev, struct sk_buff *skb)
 	dev_kfree_skb_any(skb);
 }
 
+struct net_device *bond_egress_slave(struct net_device *dev, __be16 protocol);
 #endif /* _NET_BONDING_H */

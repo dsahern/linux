@@ -3771,6 +3771,32 @@ unwind:
 	return res;
 }
 
+static struct net_device *bond_get_slave_by_id(struct bonding *bond, int slave_id)
+{
+	struct list_head *iter;
+	struct slave *slave;
+	int i = slave_id;
+
+	/* Here we start from the slave with slave_id */
+	bond_for_each_slave_rcu(bond, slave, iter) {
+		if (--i < 0) {
+			if (bond_slave_can_tx(slave))
+				return slave->dev;
+		}
+	}
+
+	/* Here we start from the first slave up to slave_id */
+	i = slave_id;
+	bond_for_each_slave_rcu(bond, slave, iter) {
+		if (--i < 0)
+			break;
+		if (bond_slave_can_tx(slave))
+			return slave->dev;
+	}
+
+	return NULL;
+}
+
 /**
  * bond_xmit_slave_id - transmit skb through slave with slave_id
  * @bond: bonding device that is transmitting
@@ -4124,6 +4150,70 @@ static u16 bond_select_queue(struct net_device *dev, struct sk_buff *skb,
 		} while (txq >= dev->real_num_tx_queues);
 	}
 	return txq;
+}
+
+static struct net_device *
+bond_egress_slave_roundrobin(struct net_device *bond_dev, __be16 protocol)
+{
+	struct bonding *bond = netdev_priv(bond_dev);
+	struct slave *slave;
+	u32 slave_id;
+
+	if (protocol == IPPROTO_IGMP && protocol == htons(ETH_P_IP)) {
+		slave = rcu_dereference(bond->curr_active_slave);
+		if (slave)
+			return slave->dev;
+
+		return bond_get_slave_by_id(bond, 0);
+	} else {
+		int slave_cnt = READ_ONCE(bond->slave_cnt);
+
+		if (likely(slave_cnt)) {
+			slave_id = bond_rr_gen_slave_id(bond);
+			return bond_get_slave_by_id(bond, slave_id % slave_cnt);
+		}
+	}
+
+	return NULL;
+}
+
+/* In active-backup mode, we know that bond->curr_active_slave is always
+ * valid if the bond has a usable interface.
+ */
+static struct net_device *
+bond_egress_slave_activebackup(struct net_device *bond_dev)
+{
+	struct bonding *bond = netdev_priv(bond_dev);
+	struct slave *slave;
+
+	slave = rcu_dereference(bond->curr_active_slave);
+
+	return slave ? slave->dev : NULL;
+}
+
+struct net_device *bond_egress_slave(struct net_device *dev, __be16 protocol)
+{
+	struct bonding *bond = netdev_priv(dev);
+
+	switch (BOND_MODE(bond)) {
+	case BOND_MODE_ROUNDROBIN:
+		return bond_egress_slave_roundrobin(dev, protocol);
+	case BOND_MODE_ACTIVEBACKUP:
+		return bond_egress_slave_activebackup(dev);
+#if 0
+	case BOND_MODE_8023AD:
+	case BOND_MODE_XOR:
+		return bond_3ad_xor_xmit(skb, dev);
+	case BOND_MODE_BROADCAST:
+		return bond_xmit_broadcast(skb, dev);
+	case BOND_MODE_ALB:
+		return bond_alb_xmit(skb, dev);
+	case BOND_MODE_TLB:
+		return bond_tlb_xmit(skb, dev);
+#endif
+	default:
+		return NULL;
+	}
 }
 
 static netdev_tx_t __bond_start_xmit(struct sk_buff *skb, struct net_device *dev)
