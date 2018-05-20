@@ -81,6 +81,7 @@
 #include <net/bonding.h>
 #include <net/bond_3ad.h>
 #include <net/bond_alb.h>
+#include <net/stubs.h>
 
 #include "bonding_priv.h"
 
@@ -4934,6 +4935,10 @@ static struct pernet_operations bond_net_ops = {
 	.size = sizeof(struct bond_net),
 };
 
+static struct bond_stub bond_stub_impl = {
+	.egress_slave = bond_egress_slave,
+};
+
 static int __init bonding_init(void)
 {
 	int i;
@@ -4963,6 +4968,8 @@ static int __init bonding_init(void)
 
 	register_netdevice_notifier(&bond_netdev_notifier);
 out:
+	register_bond_stubs(&bond_stub_impl);
+
 	return res;
 err:
 	bond_destroy_debugfs();
@@ -4970,11 +4977,12 @@ err:
 err_link:
 	unregister_pernet_subsys(&bond_net_ops);
 	goto out;
-
 }
 
 static void __exit bonding_exit(void)
 {
+	unregister_bond_stubs();
+
 	unregister_netdevice_notifier(&bond_netdev_notifier);
 
 	bond_destroy_debugfs();
