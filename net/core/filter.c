@@ -1123,6 +1123,8 @@ static void __bpf_prog_release(struct bpf_prog *prog)
 		bpf_prog_put(prog);
 	} else {
 		bpf_release_orig_filter(prog);
+		free_uid(prog->aux->user);
+		bpf_prog_free_id(prog, true);
 		bpf_prog_free(prog);
 	}
 }
@@ -1268,8 +1270,15 @@ static struct bpf_prog *bpf_prepare_filter(struct bpf_prog *fp,
 {
 	int err;
 
+	fp->type = BPF_PROG_TYPE_CLASSIC_FILTER;
 	fp->bpf_func = NULL;
 	fp->jited = 0;
+
+	err = bpf_prog_calc_tag(fp);
+	if (err) {
+		__bpf_prog_release(fp);
+		return ERR_PTR(err);
+	}
 
 	err = bpf_check_classic(fp->insns, fp->len);
 	if (err) {
@@ -1298,6 +1307,17 @@ static struct bpf_prog *bpf_prepare_filter(struct bpf_prog *fp,
 	 */
 	if (!fp->jited)
 		fp = bpf_migrate_filter(fp);
+
+	err = bpf_prog_alloc_id(fp);
+	if (err) {
+		__bpf_prog_release(fp);
+		return ERR_PTR(err);
+	}
+
+	/* required for bpf_obj_get_info_by_fd */
+	atomic_set(&fp->aux->refcnt, 1);
+	fp->aux->load_time = ktime_get_boot_ns();
+	fp->aux->user = get_current_user();
 
 	return fp;
 }

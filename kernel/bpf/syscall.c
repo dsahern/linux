@@ -973,7 +973,7 @@ static void bpf_prog_uncharge_memlock(struct bpf_prog *prog)
 	free_uid(user);
 }
 
-static int bpf_prog_alloc_id(struct bpf_prog *prog)
+int bpf_prog_alloc_id(struct bpf_prog *prog)
 {
 	int id;
 
