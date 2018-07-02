@@ -1,0 +1,6 @@
+config NET_CLSW
+	tristate "Common Layer for Switchdev"
+	depends on NET_SWITCHDEV
+	default m
+	---help---
+	This module provides a common layer for Switchdev drivers.

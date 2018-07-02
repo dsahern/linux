@@ -41,6 +41,7 @@ source "drivers/net/ethernet/cavium/Kconfig"
 source "drivers/net/ethernet/chelsio/Kconfig"
 source "drivers/net/ethernet/cirrus/Kconfig"
 source "drivers/net/ethernet/cisco/Kconfig"
+source "drivers/net/ethernet/clsw/Kconfig"
 source "drivers/net/ethernet/cortina/Kconfig"
 
 config CX_ECAT
