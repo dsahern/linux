@@ -4219,6 +4219,11 @@ bool netdev_has_upper_dev_all_rcu(struct net_device *dev,
 
 bool netdev_has_any_upper_dev(struct net_device *dev);
 
+static inline bool netdev_has_any_lower_dev_rcu(struct net_device *dev)
+{
+	return !list_empty(&dev->adj_list.lower);
+}
+
 void *netdev_lower_get_next_private(struct net_device *dev,
 				    struct list_head **iter);
 void *netdev_lower_get_next_private_rcu(struct net_device *dev,
