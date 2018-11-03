@@ -134,6 +134,9 @@ struct vlan_pcpu_stats {
 extern struct net_device *__vlan_find_dev_deep_rcu(struct net_device *real_dev,
 					       __be16 vlan_proto, u16 vlan_id);
 extern struct net_device *vlan_dev_real_dev(const struct net_device *dev);
+/* Must be invoked with rcu_read_lock or with RTNL. */
+struct net_device *vlan_find_dev(struct net_device *real_dev,
+				 __be16 vlan_proto, u16 vlan_id);
 extern u16 vlan_dev_vlan_id(const struct net_device *dev);
 extern __be16 vlan_dev_vlan_proto(const struct net_device *dev);
 
@@ -239,6 +242,12 @@ __vlan_find_dev_deep_rcu(struct net_device *real_dev,
 static inline struct net_device *vlan_dev_real_dev(const struct net_device *dev)
 {
 	BUG();
+	return NULL;
+}
+
+static inline struct net_device *vlan_find_dev(struct net_device *real_dev,
+					       __be16 vlan_proto, u16 vlan_id)
+{
 	return NULL;
 }
 

@@ -79,19 +79,6 @@ static inline void vlan_group_set_device(struct vlan_group *vg,
 	array[vlan_id % VLAN_GROUP_ARRAY_PART_LEN] = dev;
 }
 
-/* Must be invoked with rcu_read_lock or with RTNL. */
-static inline struct net_device *vlan_find_dev(struct net_device *real_dev,
-					       __be16 vlan_proto, u16 vlan_id)
-{
-	struct vlan_info *vlan_info = rcu_dereference_rtnl(real_dev->vlan_info);
-
-	if (vlan_info)
-		return vlan_group_get_device(&vlan_info->grp,
-					     vlan_proto, vlan_id);
-
-	return NULL;
-}
-
 #define vlan_group_for_each_dev(grp, i, dev) \
 	for ((i) = 0; i < VLAN_PROTO_NUM * VLAN_N_VID; i++) \
 		if (((dev) = __vlan_group_get_device((grp), (i) / VLAN_N_VID, \

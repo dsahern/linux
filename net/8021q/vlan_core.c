@@ -109,6 +109,18 @@ struct net_device *vlan_dev_real_dev(const struct net_device *dev)
 }
 EXPORT_SYMBOL(vlan_dev_real_dev);
 
+struct net_device *vlan_find_dev(struct net_device *real_dev,
+				 __be16 vlan_proto, u16 vlan_id)
+{
+	struct vlan_info *vlan_info = rcu_dereference_rtnl(real_dev->vlan_info);
+
+	if (vlan_info)
+		return vlan_group_get_device(&vlan_info->grp,
+					     vlan_proto, vlan_id);
+
+	return NULL;
+}
+
 u16 vlan_dev_vlan_id(const struct net_device *dev)
 {
 	return vlan_dev_priv(dev)->vlan_id;
