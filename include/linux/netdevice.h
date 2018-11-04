@@ -3606,6 +3606,11 @@ int netdev_rx_handler_register(struct net_device *dev,
 			       rx_handler_func_t *rx_handler,
 			       void *rx_handler_data);
 void netdev_rx_handler_unregister(struct net_device *dev);
+/* caller holds rcu lock */
+static inline bool netdev_has_rx_handler(struct net_device *dev)
+{
+	return !!rcu_access_pointer(dev->rx_handler);
+}
 
 bool dev_valid_name(const char *name);
 int dev_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr,
