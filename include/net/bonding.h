@@ -246,6 +246,21 @@ struct bond_vlan_tag {
 };
 
 /**
+ * Returns bond net_device if given device is a bonding slave
+ *
+ * Caller must hold rcu lock
+ */
+static inline struct net_device *bond_get_from_slave(struct net_device *dev)
+{
+	if (netif_is_bond_slave(dev)) {
+		struct slave *slave = bond_slave_get_rcu(dev);
+
+		return slave->bond->dev;
+	}
+	return NULL;
+}
+
+/**
  * Returns NULL if the net_device does not belong to any of the bond's slaves
  *
  * Caller must hold bond lock for read
