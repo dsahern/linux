@@ -65,12 +65,13 @@ int main(int argc, char **argv)
 	struct bpf_prog_load_attr prog_load_attr = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
 	};
+	int prog_fd, devmap_fd = -1, idxmap_fd = -1;
 	const char *prog_name = "xdp_fwd";
 	struct bpf_program *prog;
 	char filename[PATH_MAX];
 	struct bpf_object *obj;
 	int opt, i, idx, err;
-	int prog_fd, map_fd;
+	struct bpf_map *map;
 	int attach = 1;
 	int ret = 0;
 
@@ -112,16 +113,21 @@ int main(int argc, char **argv)
 			printf("program not found: %s\n", strerror(prog_fd));
 			return 1;
 		}
-		map_fd = bpf_map__fd(bpf_object__find_map_by_name(obj,
-								  "tx_port"));
-		if (map_fd < 0) {
-			printf("map not found: %s\n", strerror(map_fd));
+
+		map = bpf_object__find_map_by_name(obj, "tx_devmap");
+		if (map)
+			devmap_fd = bpf_map__fd(map);
+		if (devmap_fd < 0) {
+			printf("device map not found: %s\n", strerror(devmap_fd));
 			return 1;
 		}
-	}
-	if (attach) {
-		for (i = 1; i < 64; ++i)
-			bpf_map_update_elem(map_fd, &i, &i, 0);
+		map = bpf_object__find_map_by_name(obj, "tx_idxmap");
+		if (map)
+			idxmap_fd = bpf_map__fd(map);
+		if (idxmap_fd < 0) {
+			printf("device map not found: %s\n", strerror(idxmap_fd));
+			return 1;
+		}
 	}
 
 	for (i = optind; i < argc; ++i) {
@@ -138,9 +144,13 @@ int main(int argc, char **argv)
 			if (err)
 				ret = err;
 		} else {
+			int one = 1;
+
 			err = do_attach(idx, prog_fd, argv[i]);
 			if (err)
 				ret = err;
+			bpf_map_update_elem(devmap_fd, &idx, &idx, 0);
+			bpf_map_update_elem(idxmap_fd, &idx, &one, 0);
 		}
 	}
 
