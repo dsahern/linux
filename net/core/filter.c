@@ -50,6 +50,7 @@
 #include <linux/ratelimit.h>
 #include <linux/seccomp.h>
 #include <linux/if_vlan.h>
+#include <linux/if_macvlan.h>
 #include <linux/bpf.h>
 #include <net/sch_generic.h>
 #include <net/cls_cgroup.h>
@@ -73,6 +74,8 @@
 #include <linux/seg6_local.h>
 #include <net/seg6.h>
 #include <net/seg6_local.h>
+#include <net/bonding.h>
+#include <net/stubs.h>
 
 /**
  *	sk_filter_trim_cap - run a packet through a socket filter
@@ -4277,6 +4280,186 @@ static const struct bpf_func_proto bpf_skb_get_xfrm_state_proto = {
 };
 #endif
 
+static struct net_device *bpf_set_vlan_params(struct bpf_dev_lookup *params,
+					      struct net_device *dev)
+{
+	params->vlan_TCI = htons(vlan_dev_vlan_id(dev));
+	params->proto = vlan_dev_vlan_proto(dev);
+
+	return vlan_dev_real_dev(dev);
+}
+
+/* Walk down a stack of devices starting with params->ifindex
+ * looking for the bottom is execpted to be the device from a forwarding
+ * lookup
+ */
+static int bpf_egress_lookup(struct net *net, struct bpf_dev_lookup *params)
+{
+	struct net_device *dev, *egress = NULL;
+	bool vlan_set = false;
+
+	dev = dev_get_by_index_rcu(net, params->ifindex);
+	if (unlikely(!dev))
+		return -ENODEV;
+
+	/* for now, vlan device only supported at the top of the stack
+	 * from where this lookup starts
+	 */
+	if (is_vlan_dev(dev)) {
+		dev = bpf_set_vlan_params(params, dev);
+		vlan_set = true;
+	}
+
+	egress = dev;
+
+	if (netif_is_macvlan(egress)) {
+		egress = macvlan_dev_real_dev(egress);
+		if (!egress)
+			return -ENODEV;
+	}
+
+	if (is_vlan_dev(egress)) {
+		if (vlan_set)
+			return BPF_DEV_LKUP_RET_UNSUPP; /* QinQ */
+
+		dev = bpf_set_vlan_params(params, dev);
+		vlan_set = true;
+	}
+
+	if (netif_is_bridge_master(egress))
+		return BPF_DEV_LKUP_RET_UNSUPP;
+
+	if (netif_is_bond_master(egress))
+		egress = bond_stub->egress_slave(egress, params->proto);
+	else if (netif_is_team_master(egress))
+		return BPF_DEV_LKUP_RET_UNSUPP;
+
+	if (is_vlan_dev(egress)) {
+		if (vlan_set)
+			return BPF_DEV_LKUP_RET_UNSUPP;
+
+		egress = bpf_set_vlan_params(params, dev);
+	}
+
+	/* if this device has any lower one we have an unknown configuration */
+	if (netdev_has_any_lower_dev_rcu(egress))
+		return BPF_DEV_LKUP_RET_UNSUPP;
+
+	params->ifindex = egress->ifindex;
+	params->mtu = dev->mtu;
+
+	return 0;
+}
+
+#define MAC_ADDR_MATCH(dev, params) \
+	!memcmp((dev)->dev_addr, (params)->dmac, ETH_ALEN)
+
+static int bpf_l3dev_lookup(struct net *net, struct bpf_dev_lookup *params)
+{
+	struct net_device *dev, *l3_dev = NULL;
+	u16 h_proto, vid;
+
+	dev = dev_get_by_index_rcu(net, params->ifindex);
+	if (unlikely(!dev))
+		return -ENODEV;
+
+	vid = ntohs(params->vlan_TCI) & VLAN_VID_MASK;
+	h_proto = ntohs(params->proto);
+	if (vid && h_proto != ETH_P_8021Q && h_proto != ETH_P_8021AD)
+		return -EINVAL;
+
+	/* QinQ not supported at the moment */
+	if (h_proto == ETH_P_8021AD)
+		return BPF_DEV_LKUP_RET_UNSUPP;
+
+	/* simple case - traffic on the base port */
+	if (!vid && MAC_ADDR_MATCH(dev, params) &&
+	    !netdev_has_rx_handler(dev)) {
+		l3_dev = dev;
+		goto found;
+	}
+
+restart:
+	if (vid) {
+		struct net_device *vlan_dev;
+
+		vlan_dev = vlan_find_dev(dev, params->proto, vid);
+		if (vlan_dev) {
+			if (unlikely(!(vlan_dev->flags & IFF_UP)))
+				goto found;
+
+			if (MAC_ADDR_MATCH(vlan_dev, params) &&
+			    !netdev_has_rx_handler(dev)) {
+				l3_dev = vlan_dev;
+				goto found;
+			}
+			dev = vlan_dev;
+		}
+		/* QinQ: reset vlan_dev to NULL. set vid to inner proto */
+	}
+
+	if (netdev_has_rx_handler(dev)) {
+		if (netif_is_bridge_port(dev)) {
+			/* if we end up at a bridge, this should is most
+			 * likely L2 forwarded.
+			 */
+			/* TO-DO: handle case of SVI or address on a bridge */
+		}
+		if (netif_is_bond_slave(dev)) {
+			// TO-DO: is active slave?
+			// TO-DO: pkt ok for fast path?
+			dev = bond_get_from_slave(dev);
+			if (!dev)
+				return -ENODEV;
+			goto restart;
+		}
+		if (netif_is_macvlan_port(dev)) {
+			// TO-DO: pkt ok for fast path?
+			//dev = get macvlan device
+			//goto restart;
+		}
+	}
+
+found:
+	/* l3_dev by definition is not a bridge port member.
+	 * for now, we do not support crossing network namespaces
+	 */
+	if (!l3_dev || netif_is_bridge_port(l3_dev) || dev_net(l3_dev) != net)
+		return BPF_DEV_LKUP_RET_UNSUPP;
+
+	params->ifindex = l3_dev->ifindex;
+
+	return 0;
+}
+
+#undef MAC_ADDR_MATCH
+
+typedef int (*bpf_dev_lookup_t)(struct net *net, struct bpf_dev_lookup *params);
+
+static bpf_dev_lookup_t bpf_dev_lkup_fcns[BPF_DEV_LOOKUP_MAX + 1] = {
+	[BPF_DEV_LOOKUP_L3DEV] = bpf_l3dev_lookup,
+	[BPF_DEV_LOOKUP_EGRESS] = bpf_egress_lookup,
+};
+
+BPF_CALL_4(bpf_xdp_dev_lookup, struct xdp_buff *, ctx,
+	   struct bpf_dev_lookup *, params, int, plen, u8, ltype)
+{
+	if (plen < sizeof(*params) || ltype > BPF_DEV_LOOKUP_MAX)
+		return -EINVAL;
+
+	return bpf_dev_lkup_fcns[ltype](dev_net(ctx->rxq->dev), params);
+}
+
+static const struct bpf_func_proto bpf_xdp_dev_lookup_proto = {
+	.func		= bpf_xdp_dev_lookup,
+	.gpl_only	= true,
+	.ret_type	= RET_INTEGER,
+	.arg1_type      = ARG_PTR_TO_CTX,
+	.arg2_type      = ARG_PTR_TO_MEM,
+	.arg3_type      = ARG_CONST_SIZE,
+	.arg4_type	= ARG_ANYTHING,
+};
+
 #if IS_ENABLED(CONFIG_INET) || IS_ENABLED(CONFIG_IPV6)
 static int bpf_fib_set_fwd_params(struct bpf_fib_lookup *params,
 				  const struct neighbour *neigh,
@@ -4284,9 +4467,14 @@ static int bpf_fib_set_fwd_params(struct bpf_fib_lookup *params,
 {
 	memcpy(params->dmac, neigh->ha, ETH_ALEN);
 	memcpy(params->smac, dev->dev_addr, ETH_ALEN);
-	params->h_vlan_TCI = 0;
-	params->h_vlan_proto = 0;
 	params->ifindex = dev->ifindex;
+	if (is_vlan_dev(dev)) {
+		params->h_vlan_TCI = vlan_dev_vlan_id(dev);
+		params->h_vlan_proto = vlan_dev_vlan_proto(dev);
+	} else {
+		params->h_vlan_TCI = 0;
+		params->h_vlan_proto = 0;
+	}
 
 	return 0;
 }
@@ -5301,6 +5489,8 @@ xdp_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 	case BPF_FUNC_sk_release:
 		return &bpf_sk_release_proto;
 #endif
+	case BPF_FUNC_dev_lookup:
+		return &bpf_xdp_dev_lookup_proto;
 	default:
 		return bpf_base_func_proto(func_id);
 	}

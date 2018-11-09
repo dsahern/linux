@@ -1929,6 +1929,23 @@ union bpf_attr {
  *		* > 0 one of **BPF_FIB_LKUP_RET_** codes explaining why the
  *		  packet is not forwarded or needs assist from full stack
  *
+ * int bpf_dev_lookup(void *ctx, struct bpf_dev_lookup *params, int plen, u8 ltype)
+ *	Description
+ *		Do device lookup in kernel tables using parameters in *params*.
+ *
+ *		*plen* argument is the size of the passed in struct.
+ *
+ *		*ltype* argument is the lookup type:
+ *		**BPF_DEV_LOOKUP_L3DEV** means find the Layer 3 device index
+ *		**BPF_DEV_LOOKUP_EGRESS** means find the egress port index
+ *
+ *		*ctx* is either **struct xdp_md** for XDP programs or
+ *		**struct sk_buff** tc cls_act programs.
+ *
+ *	Return
+ *		Device index on success, 0 if device can not be definitely
+ *		determined, and negative value on error
+ *
  * int bpf_sock_hash_update(struct bpf_sock_ops_kern *skops, struct bpf_map *map, void *key, u64 flags)
  *	Description
  *		Add an entry to, or update a sockhash *map* referencing sockets.
@@ -2353,7 +2370,8 @@ union bpf_attr {
 	FN(map_push_elem),		\
 	FN(map_pop_elem),		\
 	FN(map_peek_elem),		\
-	FN(msg_push_data),
+	FN(msg_push_data),		\
+	FN(dev_lookup),
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
@@ -2845,6 +2863,48 @@ struct bpf_cgroup_dev_ctx {
 
 struct bpf_raw_tracepoint_args {
 	__u64 args[0];
+};
+
+enum {
+	/* Return device index for Layer 3 device */
+	BPF_DEV_LOOKUP_L3DEV,
+	/* Return device index for egress port */
+	BPF_DEV_LOOKUP_EGRESS,
+
+	__BPF_DEV_LOOKUP_MAX,
+};
+#define BPF_DEV_LOOKUP_MAX  (__BPF_DEV_LOOKUP_MAX - 1)
+
+enum {
+	BPF_DEV_LKUP_RET_SUCCESS,     /* lookup successful */
+	BPF_DEV_LKUP_RET_UNSUPP,      /* unsupported device type */
+	BPF_DEV_LKUP_RET_INCOMPAT,    /* device type requires full-stack assist */
+};
+
+struct bpf_dev_lookup {
+	/* input:  starting device index for lookup
+	 * output: device index from lookup
+	 */
+	__u32	ifindex;
+
+	/* ingress:
+	 *     outer vlan proto and tci for dev lookup
+	 * egress:
+	 *     input:  network proto
+	 *     output: 8021q vlan proto and tci
+	 */
+	__be16	proto;
+	__be16	vlan_TCI;
+
+	/* reserved for future use (QinQ) */
+	__be16	resvd1;
+	__be16	resvd2;
+
+	/* mtu of egress device */
+	__u16	mtu;
+
+	/* ingress lookup */
+	__u8	dmac[6];
 };
 
 /* DIRECT:  Skip the FIB rules and go to FIB table associated with device
