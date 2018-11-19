@@ -1948,6 +1948,13 @@ union bpf_attr {
  *		* > 0 one of **BPF_DEV_LKUP_RET_** codes explaining why the
  *		  lookup failed
  *
+ * int bpf_dev_counter(void *ctx, struct bpf_dev_counter *params, int plen, u8 ctype)
+ *	Description
+ *
+ *	Return
+ *		* < 0 if any input argument is invalid
+ *		*   0 on success
+ *
  * int bpf_sock_hash_update(struct bpf_sock_ops_kern *skops, struct bpf_map *map, void *key, u64 flags)
  *	Description
  *		Add an entry to, or update a sockhash *map* referencing sockets.
@@ -2373,7 +2380,8 @@ union bpf_attr {
 	FN(map_pop_elem),		\
 	FN(map_peek_elem),		\
 	FN(msg_push_data),		\
-	FN(dev_lookup),
+	FN(dev_lookup),			\
+	FN(dev_counter),
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
@@ -2907,6 +2915,13 @@ struct bpf_dev_lookup {
 
 	/* ingress lookup */
 	__u8	dmac[6];
+};
+
+struct bpf_dev_counter {
+	__u32	netns_id;
+	__u32	ifindex;
+	__u32	pkts;    /* must be 1 for now */
+	__u32	bytes;
 };
 
 /* DIRECT:  Skip the FIB rules and go to FIB table associated with device

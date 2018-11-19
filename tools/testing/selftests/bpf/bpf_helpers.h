@@ -172,6 +172,9 @@ static int (*bpf_skb_vlan_pop)(void *ctx) =
 static int (*bpf_dev_lookup)(void *ctx, struct bpf_dev_lookup *params,
 			     int plen, __u8 ltype) =
 	(void *) BPF_FUNC_dev_lookup;
+static int (*bpf_dev_counter)(void *ctx, struct bpf_dev_counter *params,
+			      int plen, __u8 ltype) =
+	(void *) BPF_FUNC_dev_counter;
 
 /* llvm builtin functions that eBPF C program may use to
  * emit BPF_LD_ABS and BPF_LD_IND instructions

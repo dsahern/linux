@@ -4460,6 +4460,45 @@ static const struct bpf_func_proto bpf_xdp_dev_lookup_proto = {
 	.arg4_type	= ARG_ANYTHING,
 };
 
+static int bpf_dev_counter(struct net *net, struct bpf_dev_counter *params,
+			   u8 stype)
+{
+	struct net_device *dev;
+
+	/* TO-DO: add support for network namespaces */
+	if (params->netns_id)
+		return -EINVAL;
+
+	/* for now, XDP only handles 1 packet at a time */
+	if (params->pkts != 1 || params->bytes > 64*1024)
+		return -EINVAL;
+
+	dev = __dev_get_by_index(net, params->ifindex);
+	if (!dev)
+		return -ENODEV;
+
+	return dev_update_stats(dev, params->pkts, params->bytes, stype);
+}
+
+BPF_CALL_4(bpf_xdp_dev_counter, struct xdp_buff *, ctx,
+	   struct bpf_dev_counter*, params, int, plen, u8, stype)
+{
+	if (plen < sizeof(*params))
+		return -EINVAL;
+
+	return bpf_dev_counter(dev_net(ctx->rxq->dev), params, stype);
+}
+
+static const struct bpf_func_proto bpf_xdp_dev_counter_proto = {
+	.func		= bpf_xdp_dev_counter,
+	.gpl_only	= true,
+	.ret_type	= RET_INTEGER,
+	.arg1_type      = ARG_PTR_TO_CTX,
+	.arg2_type      = ARG_PTR_TO_MEM,
+	.arg3_type      = ARG_CONST_SIZE,
+	.arg4_type	= ARG_ANYTHING,
+};
+
 #if IS_ENABLED(CONFIG_INET) || IS_ENABLED(CONFIG_IPV6)
 static int bpf_fib_set_fwd_params(struct bpf_fib_lookup *params,
 				  const struct neighbour *neigh,
@@ -5491,6 +5530,8 @@ xdp_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 #endif
 	case BPF_FUNC_dev_lookup:
 		return &bpf_xdp_dev_lookup_proto;
+	case BPF_FUNC_dev_counter:
+		return &bpf_xdp_dev_counter_proto;
 	default:
 		return bpf_base_func_proto(func_id);
 	}
