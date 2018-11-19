@@ -18,6 +18,7 @@
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/netdevice.h>
 
 #include "bpf_helpers.h"
 
@@ -72,18 +73,34 @@ static __always_inline void xdp_stats_tx(int idx)
 		stats->tx++;
 }
 
-static __always_inline void xdp_stats_l3_dev(int idx)
+static __always_inline void xdp_stats_l3_dev(struct xdp_md *ctx, int idx,
+					     unsigned long bytes)
 {
+	struct bpf_dev_counter params;
 	struct xdp_stats *stats;
+
+	params.netns_id = 0;
+	params.ifindex = idx;
+	params.pkts = 1;
+	params.bytes = bytes;
+	bpf_dev_counter(ctx, &params, sizeof(params), NETDEV_COUNTER_RX);
 
 	stats = bpf_map_lookup_elem(&stats_map, &idx);
 	if (stats)
 		stats->l3_dev++;
 }
 
-static __always_inline void xdp_stats_fib_dev(int idx)
+static __always_inline void xdp_stats_fib_dev(struct xdp_md *ctx, int idx,
+					      unsigned long bytes)
 {
+	struct bpf_dev_counter params;
 	struct xdp_stats *stats;
+
+	params.netns_id = 0;
+	params.ifindex = idx;
+	params.pkts = 1;
+	params.bytes = bytes;
+	bpf_dev_counter(ctx, &params, sizeof(params), NETDEV_COUNTER_TX);
 
 	stats = bpf_map_lookup_elem(&stats_map, &idx);
 	if (stats)
@@ -214,6 +231,7 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, u32 flags)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
+	struct bpf_dev_counter ctr_params;
 	struct bpf_dev_lookup dev_params;
 	struct bpf_fib_lookup fib_params;
 	int idx = ctx->ingress_ifindex;
@@ -264,7 +282,7 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, u32 flags)
 		return XDP_PASS;
 	}
 	idx = dev_params.ifindex;
-	xdp_stats_l3_dev(idx);
+	xdp_stats_l3_dev(ctx, idx, ctx->data_end - ctx->data);
 
 	__builtin_memset(&fib_params, 0, sizeof(fib_params));
 	if (h_proto == htons(ETH_P_IP)) {
@@ -325,7 +343,6 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, u32 flags)
 
 	/* convert FIB nexthop device to egress port */
 	idx = fib_params.ifindex;
-	xdp_stats_fib_dev(idx);
 
 	dev_params.ifindex = fib_params.ifindex;
 	dev_params.proto = 0;
@@ -398,6 +415,8 @@ static __always_inline int xdp_fwd_flags(struct xdp_md *ctx, u32 flags)
 	memcpy(eth->h_dest, fib_params.dmac, ETH_ALEN);
 	memcpy(eth->h_source, fib_params.smac, ETH_ALEN);
 	eth->h_proto = h_proto;
+
+	xdp_stats_fib_dev(ctx, fib_params.ifindex, ctx->data_end - ctx->data);
 	xdp_stats_tx(idx);
 
 	return bpf_redirect_map(&tx_devmap, dev_params.ifindex, 0);
