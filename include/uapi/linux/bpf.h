@@ -1943,8 +1943,10 @@ union bpf_attr {
  *		**struct sk_buff** tc cls_act programs.
  *
  *	Return
- *		Device index on success, 0 if device can not be definitely
- *		determined, and negative value on error
+ *		* < 0 if any input argument is invalid
+ *		*   0 on success (packet is forwarded, nexthop neighbor exists)
+ *		* > 0 one of **BPF_DEV_LKUP_RET_** codes explaining why the
+ *		  lookup failed
  *
  * int bpf_sock_hash_update(struct bpf_sock_ops_kern *skops, struct bpf_map *map, void *key, u64 flags)
  *	Description
