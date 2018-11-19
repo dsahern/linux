@@ -683,6 +683,40 @@ static int vlan_ethtool_get_ts_info(struct net_device *dev,
 	return 0;
 }
 
+static int vlan_dev_update_stats(struct net_device *dev, u32 pkts, u32 bytes,
+				 u8 stype)
+{
+	int err = 0;
+
+	if (stype == NETDEV_COUNTER_RX_DROP) {
+		atomic_long_add(pkts, &dev->rx_dropped);
+	} else if (stype == NETDEV_COUNTER_TX_DROP) {
+		atomic_long_add(pkts, &dev->tx_dropped);
+	} else {
+		struct vlan_dev_priv *vlan = vlan_dev_priv(dev);
+		struct vlan_pcpu_stats *stats;
+
+		stats = this_cpu_ptr(vlan->vlan_pcpu_stats);
+		u64_stats_update_begin(&stats->syncp);
+		switch (stype) {
+		case NETDEV_COUNTER_RX:
+			stats->rx_packets += pkts;
+			stats->rx_bytes += bytes;
+			break;
+		case NETDEV_COUNTER_TX:
+			stats->tx_packets += pkts;
+			stats->tx_bytes += bytes;
+			break;
+		default:
+			err = -EINVAL;
+		}
+
+		u64_stats_update_end(&stats->syncp);
+	}
+
+	return err;
+}
+
 static void vlan_dev_get_stats64(struct net_device *dev,
 				 struct rtnl_link_stats64 *stats)
 {
@@ -787,6 +821,7 @@ static const struct net_device_ops vlan_netdev_ops = {
 	.ndo_change_rx_flags	= vlan_dev_change_rx_flags,
 	.ndo_do_ioctl		= vlan_dev_ioctl,
 	.ndo_neigh_setup	= vlan_dev_neigh_setup,
+	.ndo_update_stats	= vlan_dev_update_stats,
 	.ndo_get_stats64	= vlan_dev_get_stats64,
 #if IS_ENABLED(CONFIG_FCOE)
 	.ndo_fcoe_ddp_setup	= vlan_dev_fcoe_ddp_setup,
