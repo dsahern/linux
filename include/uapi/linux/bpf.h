@@ -1944,7 +1944,7 @@ union bpf_attr {
  *
  *	Return
  *		* < 0 if any input argument is invalid
- *		*   0 on success (packet is forwarded, nexthop neighbor exists)
+ *		*   0 on success
  *		* > 0 one of **BPF_DEV_LKUP_RET_** codes explaining why the
  *		  lookup failed
  *
