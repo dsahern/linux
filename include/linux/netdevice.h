@@ -950,6 +950,16 @@ struct dev_ifalias {
 	char ifalias[];
 };
 
+enum {
+	NETDEV_COUNTER_RX,
+	NETDEV_COUNTER_RX_DROP,
+	NETDEV_COUNTER_TX,
+	NETDEV_COUNTER_TX_DROP,
+
+	__NETDEV_COUNTER_MAX,
+};
+#define NETDEV_COUNTER_MAX  (__NETDEV_COUNTER_MAX - 1)
+
 /*
  * This structure defines the management hooks for network devices.
  * The following hooks can be defined; unless noted otherwise, they are
@@ -1032,6 +1042,10 @@ struct dev_ifalias {
  * void (*ndo_tx_timeout)(struct net_device *dev);
  *	Callback used when the transmitter has not made any progress
  *	for dev->watchdog ticks.
+ *
+ * int (*ndo_update_stats)(struct net_device *dev, u32 pkts, u32 bytes,
+ *			   u8 stype);
+ *	Update stats counter for given type.
  *
  * void (*ndo_get_stats64)(struct net_device *dev,
  *                         struct rtnl_link_stats64 *storage);
@@ -1284,6 +1298,9 @@ struct net_device_ops {
 						   struct neigh_parms *);
 	void			(*ndo_tx_timeout) (struct net_device *dev);
 
+	int			(*ndo_update_stats)(struct net_device *dev,
+						    u32 pkts, u32 bytes,
+						    u8 stype);
 	void			(*ndo_get_stats64)(struct net_device *dev,
 						   struct rtnl_link_stats64 *storage);
 	bool			(*ndo_has_offload_stats)(const struct net_device *dev, int attr_id);
@@ -4183,6 +4200,7 @@ void netdev_notify_peers(struct net_device *dev);
 void netdev_features_change(struct net_device *dev);
 /* Load a device via the kmod */
 void dev_load(struct net *net, const char *name);
+int dev_update_stats(struct net_device *dev, u32 pkts, u32 bytes, u8 stype);
 struct rtnl_link_stats64 *dev_get_stats(struct net_device *dev,
 					struct rtnl_link_stats64 *storage);
 void netdev_stats_to_stats64(struct rtnl_link_stats64 *stats64,

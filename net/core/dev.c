@@ -8797,6 +8797,44 @@ void netdev_run_todo(void)
 	}
 }
 
+/**
+ *	dev_update_stats	- update network device statistics
+ *	@dev: device to get statistics from
+ *	@pkts: increase to packet counter
+ *	@bytes: increase to bytes counter
+ *	@stype: NETDEV_COUNTER_* type to apply increase to
+ */
+int dev_update_stats(struct net_device *dev, u32 pkts, u32 bytes, u8 stype)
+{
+	const struct net_device_ops *ops = dev->netdev_ops;
+	struct net_device_stats *stats;
+
+	if (ops->ndo_update_stats)
+		return ops->ndo_update_stats(dev, pkts, bytes, stype);
+
+	stats = &dev->stats;
+	switch (stype) {
+	case NETDEV_COUNTER_RX:
+		stats->rx_packets += pkts;
+		stats->rx_bytes += bytes;
+		break;
+	case NETDEV_COUNTER_RX_DROP:
+		stats->rx_dropped += pkts;
+		break;
+	case NETDEV_COUNTER_TX:
+		stats->tx_packets += pkts;
+		stats->tx_bytes += bytes;
+		break;
+	case NETDEV_COUNTER_TX_DROP:
+		stats->tx_dropped += pkts;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /* Convert net_device_stats to rtnl_link_stats64. rtnl_link_stats64 has
  * all the same fields in the same order as net_device_stats, with only
  * the type differing, but rtnl_link_stats64 may have additional fields
