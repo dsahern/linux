@@ -36,8 +36,6 @@
 #include <net/pkt_cls.h>
 #include "en.h"
 
-#define MLX5E_TC_FLOW_ID_MASK 0x0000ffff
-
 #ifdef CONFIG_MLX5_ESWITCH
 
 int mlx5e_tc_num_filters(struct mlx5e_priv *priv, unsigned long flags);
