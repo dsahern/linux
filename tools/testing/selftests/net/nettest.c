@@ -93,7 +93,7 @@ struct sock_args {
 };
 
 static int server_mode;
-static unsigned int prog_timeout = 5;
+static unsigned int prog_timeout;
 static unsigned int interactive;
 static int iter = 1;
 static char *msg = "Hello world!";
@@ -936,11 +936,8 @@ static int msg_loop(int client, int sd, void *addr, socklen_t alen,
 			if (send_msg(sd, addr, alen, args))
 				return 1;
 		}
-		if (!interactive) {
+		if (prog_timeout)
 			ptval = &timeout;
-			if (!prog_timeout)
-				timeout.tv_sec = 5;
-		}
 	}
 
 	nfds = interactive ? MAX(fileno(stdin), sd)  + 1 : sd + 1;
@@ -1741,10 +1738,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (interactive) {
-		prog_timeout = 0;
+	if (interactive)
 		msg = NULL;
-	}
 
 	if (server_mode) {
 		do {
