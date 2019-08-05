@@ -726,7 +726,7 @@ ipv4_tcp_novrf()
 		log_start
 		run_cmd nettest -s &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 	done
 
@@ -734,7 +734,7 @@ ipv4_tcp_novrf()
 	log_start
 	run_cmd nettest -s -d ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -r ${a}
+	run_cmd_nsb nettest -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server"
 
 	# verify TCP reset sent and received
@@ -742,7 +742,7 @@ ipv4_tcp_novrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused' since there is no server"
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -754,23 +754,23 @@ ipv4_tcp_novrf()
 		log_start
 		run_cmd_nsb nettest -s &
 		sleep 1
-		run_cmd nettest -r ${a} -0 ${NSA_IP}
+		run_cmd nettest -r ${a} -0 ${NSA_IP} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client"
 
 		log_start
 		run_cmd_nsb nettest -s &
 		sleep 1
-		run_cmd nettest -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -r ${a}
+		run_cmd nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, unbound client"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client"
 	done
 
@@ -782,7 +782,7 @@ ipv4_tcp_novrf()
 		log_start
 		run_cmd nettest -s &
 		sleep 1
-		run_cmd nettest -r ${a} -0 ${a} -1 ${a}
+		run_cmd nettest -r ${a} -0 ${a} -1 ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
 
@@ -790,7 +790,7 @@ ipv4_tcp_novrf()
 	log_start
 	run_cmd nettest -s -d ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -r ${a} -0 ${a}
+	run_cmd nettest -r ${a} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
 	for a in ${NSA_LO_IP} 127.0.0.1
@@ -799,7 +799,7 @@ ipv4_tcp_novrf()
 		show_hint "Should fail 'Connection refused' since addresses on loopback are out of device scope"
 		run_cmd nettest -s -d ${NSA_DEV} &
 		sleep 1
-		run_cmd nettest -r ${a}
+		run_cmd nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Device server, unbound client, local connection"
 	done
 
@@ -807,7 +807,7 @@ ipv4_tcp_novrf()
 	log_start
 	run_cmd nettest -s &
 	sleep 1
-	run_cmd nettest -r ${a} -0 ${a} -d ${NSA_DEV}
+	run_cmd nettest -r ${a} -0 ${a} -d ${NSA_DEV} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
 	for a in ${NSA_LO_IP} 127.0.0.1
@@ -816,7 +816,7 @@ ipv4_tcp_novrf()
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -s &
 		sleep 1
-		run_cmd nettest -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device client, local connection"
 	done
 
@@ -824,12 +824,12 @@ ipv4_tcp_novrf()
 	log_start
 	run_cmd nettest -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest  -d ${NSA_DEV} -r ${a} -0 ${a}
+	run_cmd nettest  -d ${NSA_DEV} -r ${a} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, device client, local connection"
 
 	log_start
 	show_hint "Should fail 'Connection refused'"
-	run_cmd nettest -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 1 "No server, device client, local conn"
 }
 
@@ -851,25 +851,25 @@ ipv4_tcp_vrf()
 		show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 		run_cmd nettest -s &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server"
 
 		log_start
 		run_cmd nettest -s -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		log_start
 		run_cmd nettest -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Device server"
 
 		# verify TCP reset received
 		log_start
 		show_hint "Should fail 'Connection refused' since there is no server"
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -880,7 +880,7 @@ ipv4_tcp_vrf()
 	show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 	run_cmd nettest -s &
 	sleep 1
-	run_cmd nettest -r ${a} -d ${NSA_DEV}
+	run_cmd nettest -r ${a} -d ${NSA_DEV} ${TO_ARG}
 	log_test_addr ${a} $? 1 "Global server, local connection"
 
 	#
@@ -895,20 +895,20 @@ ipv4_tcp_vrf()
 		show_hint "client socket should be bound to VRF"
 		run_cmd nettest -s -2 ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		show_hint "client socket should be bound to VRF"
 		run_cmd nettest -s -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		# verify TCP reset received
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -917,7 +917,7 @@ ipv4_tcp_vrf()
 	show_hint "client socket should be bound to device"
 	run_cmd nettest -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -r ${a}
+	run_cmd_nsb nettest -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server"
 
 	# local address tests
@@ -927,7 +927,7 @@ ipv4_tcp_vrf()
 		show_hint "Should fail 'No route to host' since client is not bound to VRF"
 		run_cmd nettest -s -2 ${VRF} &
 		sleep 1
-		run_cmd nettest -r ${a}
+		run_cmd nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, local connection"
 	done
 
@@ -939,23 +939,23 @@ ipv4_tcp_vrf()
 		log_start
 		run_cmd_nsb nettest -s &
 		sleep 1
-		run_cmd nettest -r ${a} -d ${VRF}
+		run_cmd nettest -r ${a} -d ${VRF} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, VRF bind"
 
 		log_start
 		run_cmd_nsb nettest -s &
 		sleep 1
-		run_cmd nettest -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -r ${a} -d ${VRF}
+		run_cmd nettest -r ${a} -d ${VRF} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, VRF client"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client"
 	done
 
@@ -964,7 +964,7 @@ ipv4_tcp_vrf()
 		log_start
 		run_cmd nettest -s -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd nettest -r ${a} -d ${VRF} -0 ${a}
+		run_cmd nettest -r ${a} -d ${VRF} -0 ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local connection"
 	done
 
@@ -972,26 +972,26 @@ ipv4_tcp_vrf()
 	log_start
 	run_cmd nettest -s -d ${VRF} -2 ${VRF} &
 	sleep 1
-	run_cmd nettest -r ${a} -d ${NSA_DEV} -0 ${a}
+	run_cmd nettest -r ${a} -d ${NSA_DEV} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, device client, local connection"
 
 	log_start
 	show_hint "Should fail 'No route to host' since client is out of VRF scope"
 	run_cmd nettest -s -d ${VRF} &
 	sleep 1
-	run_cmd nettest -r ${a}
+	run_cmd nettest -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 1 "VRF server, unbound client, local connection"
 
 	log_start
 	run_cmd nettest -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -r ${a} -d ${VRF} -0 ${a}
+	run_cmd nettest -r ${a} -d ${VRF} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, VRF client, local connection"
 
 	log_start
 	run_cmd nettest -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -r ${a} -d ${NSA_DEV} -0 ${a}
+	run_cmd nettest -r ${a} -d ${NSA_DEV} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, device client, local connection"
 }
 
@@ -1030,12 +1030,12 @@ ipv4_udp_novrf()
 		log_start
 		run_cmd nettest -D -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		show_hint "Should fail 'Connection refused' since there is no server"
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -1043,7 +1043,7 @@ ipv4_udp_novrf()
 	log_start
 	run_cmd nettest -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -D -r ${a}
+	run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server"
 
 	#
@@ -1054,35 +1054,35 @@ ipv4_udp_novrf()
 		log_start
 		run_cmd_nsb nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -0 ${NSA_IP}
+		run_cmd nettest -D -r ${a} -0 ${NSA_IP} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -0 ${NSA_IP}
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -0 ${NSA_IP} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -C -0 ${NSA_IP}
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -C -0 ${NSA_IP} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device send via cmsg"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP}
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind via IP_UNICAST_IF"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -D -r ${a}
+		run_cmd nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, unbound client"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client"
 	done
 
@@ -1094,7 +1094,7 @@ ipv4_udp_novrf()
 		log_start
 		run_cmd nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -0 ${a} -1 ${a}
+		run_cmd nettest -D -r ${a} -0 ${a} -1 ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
 
@@ -1102,7 +1102,7 @@ ipv4_udp_novrf()
 	log_start
 	run_cmd nettest -s -D -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -r ${a}
+	run_cmd nettest -D -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
 	for a in ${NSA_LO_IP} 127.0.0.1
@@ -1111,7 +1111,7 @@ ipv4_udp_novrf()
 		show_hint "Should fail 'Connection refused' since address is out of device scope"
 		run_cmd nettest -s -D -d ${NSA_DEV} &
 		sleep 1
-		run_cmd nettest -D -r ${a}
+		run_cmd nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Device server, unbound client, local connection"
 	done
 
@@ -1119,19 +1119,19 @@ ipv4_udp_novrf()
 	log_start
 	run_cmd nettest -s -D &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
 	log_start
 	run_cmd nettest -s -D &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -C -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -C -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device send via cmsg, local connection"
 
 	log_start
 	run_cmd nettest -s -D &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -S -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -S -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client via IP_UNICAST_IF, local connection"
 
 	# IPv4 with device bind has really weird behavior - it overrides the
@@ -1143,21 +1143,21 @@ ipv4_udp_novrf()
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 2 "Global server, device client, local connection"
 
 		log_start
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -C
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -C ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device send via cmsg, local connection"
 
 		log_start
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S
+		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device client via IP_UNICAST_IF, local connection"
 	done
 
@@ -1165,11 +1165,11 @@ ipv4_udp_novrf()
 	log_start
 	run_cmd nettest -D -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a} -0 ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, device client, local conn"
 
 	log_start
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 2 "No server, device client, local conn"
 }
 
@@ -1190,31 +1190,31 @@ ipv4_udp_vrf()
 		show_hint "Fails because ingress is in a VRF and global server is disabled"
 		run_cmd nettest -D -s &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server"
 
 		log_start
 		run_cmd nettest -D -d ${VRF} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		log_start
 		run_cmd nettest -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 
 		log_start
 		show_hint "Should fail 'Connection refused' since there is no server"
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 
 		log_start
 		show_hint "Should fail 'Connection refused' since global server is out of scope"
 		run_cmd nettest -D -s &
 		sleep 1
-		run_cmd nettest -D -d ${VRF} -r ${a}
+		run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, VRF client, local connection"
 	done
 
@@ -1222,26 +1222,26 @@ ipv4_udp_vrf()
 	log_start
 	run_cmd nettest -s -D -d ${VRF} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${VRF} -r ${a}
+	run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -d ${VRF} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, enslaved device client, local connection"
 
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -D -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${VRF} -r ${a}
+	run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Enslaved device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Enslaved device server, device client, local conn"
 
 	# enable global server
@@ -1256,24 +1256,24 @@ ipv4_udp_vrf()
 		log_start
 		run_cmd nettest -D -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		run_cmd nettest -D -d ${VRF} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		log_start
 		run_cmd nettest -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd_nsb nettest -D -r ${a}
+		run_cmd_nsb nettest -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -1283,24 +1283,24 @@ ipv4_udp_vrf()
 	log_start
 	run_cmd_nsb nettest -D -s &
 	sleep 1
-	run_cmd nettest -d ${VRF} -D -r ${NSB_IP} -1 ${NSA_IP}
+	run_cmd nettest -d ${VRF} -D -r ${NSB_IP} -1 ${NSA_IP} ${TO_ARG}
 	log_test $? 0 "VRF client"
 
 	log_start
 	run_cmd_nsb nettest -D -s &
 	sleep 1
-	run_cmd nettest -d ${NSA_DEV} -D -r ${NSB_IP} -1 ${NSA_IP}
+	run_cmd nettest -d ${NSA_DEV} -D -r ${NSB_IP} -1 ${NSA_IP} ${TO_ARG}
 	log_test $? 0 "Enslaved device client"
 
 	# negative test - should fail
 	log_start
 	show_hint "Should fail 'Connection refused'"
-	run_cmd nettest -D -d ${VRF} -r ${NSB_IP}
+	run_cmd nettest -D -d ${VRF} -r ${NSB_IP} ${TO_ARG}
 	log_test $? 1 "No server, VRF client"
 
 	log_start
 	show_hint "Should fail 'Connection refused'"
-	run_cmd nettest -D -d ${NSA_DEV} -r ${NSB_IP}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${NSB_IP} ${TO_ARG}
 	log_test $? 1 "No server, enslaved device client"
 
 	#
@@ -1310,31 +1310,31 @@ ipv4_udp_vrf()
 	log_start
 	run_cmd nettest -D -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${VRF} -r ${a}
+	run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -d ${VRF} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${VRF} -r ${a}
+	run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -d ${VRF} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, device client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${VRF} -r ${a}
+	run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Enslaved device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Enslaved device server, device client, local conn"
 
 	for a in ${VRF_IP} 127.0.0.1
@@ -1342,7 +1342,7 @@ ipv4_udp_vrf()
 		log_start
 		run_cmd nettest -D -s -2 ${VRF} &
 		sleep 1
-		run_cmd nettest -D -d ${VRF} -r ${a}
+		run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 	done
 
@@ -1351,7 +1351,7 @@ ipv4_udp_vrf()
 		log_start
 		run_cmd nettest -s -D -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd nettest -D -d ${VRF} -r ${a}
+		run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 	done
 
@@ -1361,7 +1361,7 @@ ipv4_udp_vrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -D -d ${VRF} -r ${a}
+		run_cmd nettest -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, VRF client, local conn"
 	done
 }
@@ -1413,11 +1413,11 @@ ipv4_addr_bind_novrf()
 	#
 	a=${NSA_IP}
 	log_start
-	run_cmd nettest -l ${a} -r ${NSB_IP} -t1 -b
+	run_cmd nettest -l ${a} -r ${NSB_IP} -t1 -b ${TO_ARG}
 	log_test_addr ${a} $? 0 "TCP socket bind to local address"
 
 	log_start
-	run_cmd nettest -l ${a} -r ${NSB_IP} -d ${NSA_DEV} -t1 -b
+	run_cmd nettest -l ${a} -r ${NSB_IP} -d ${NSA_DEV} -t1 -b ${TO_ARG}
 	log_test_addr ${a} $? 0 "TCP socket bind to local address after device bind"
 
 	# Sadly, the kernel allows binding a socket to a device and then
@@ -1513,7 +1513,7 @@ ipv4_rt()
 		log_start
 		run_cmd nettest ${varg} -s &
 		sleep 1
-		run_cmd_nsb nettest ${varg} -r ${a} &
+		run_cmd_nsb nettest ${varg} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -1527,7 +1527,7 @@ ipv4_rt()
 		log_start
 		run_cmd nettest ${varg} -s -d ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest ${varg} -r ${a} &
+		run_cmd_nsb nettest ${varg} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -1540,7 +1540,7 @@ ipv4_rt()
 	log_start
 	run_cmd nettest ${varg} -s -d ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest ${varg} -r ${a} &
+	run_cmd_nsb nettest ${varg} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -1554,7 +1554,7 @@ ipv4_rt()
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${VRF} -r ${NSB_IP} &
+	run_cmd nettest ${varg} -d ${VRF} -r ${NSB_IP} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -1565,7 +1565,7 @@ ipv4_rt()
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${NSB_IP} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${NSB_IP} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -1581,7 +1581,7 @@ ipv4_rt()
 		log_start
 		run_cmd nettest ${varg} -s &
 		sleep 1
-		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
+		run_cmd nettest ${varg} -d ${VRF} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -1595,7 +1595,7 @@ ipv4_rt()
 		log_start
 		run_cmd nettest ${varg} -d ${VRF} -s &
 		sleep 1
-		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
+		run_cmd nettest ${varg} -d ${VRF} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -1608,7 +1608,7 @@ ipv4_rt()
 	log_start
 	run_cmd nettest ${varg} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -1619,7 +1619,7 @@ ipv4_rt()
 	log_start
 	run_cmd nettest ${varg} -d ${VRF} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -1630,7 +1630,7 @@ ipv4_rt()
 	log_start
 	run_cmd nettest ${varg} -d ${NSA_DEV} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -1973,7 +1973,7 @@ ipv6_tcp_novrf()
 		log_start
 		run_cmd nettest -6 -s &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 	done
 
@@ -1982,7 +1982,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -1994,7 +1994,7 @@ ipv6_tcp_novrf()
 		log_start
 		run_cmd_nsb nettest -6 -s &
 		sleep 1
-		run_cmd nettest -6 -r ${a}
+		run_cmd nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client"
 	done
 
@@ -2003,7 +2003,7 @@ ipv6_tcp_novrf()
 		log_start
 		run_cmd_nsb nettest -6 -s &
 		sleep 1
-		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind"
 	done
 
@@ -2011,7 +2011,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client"
 	done
 
@@ -2023,7 +2023,7 @@ ipv6_tcp_novrf()
 		log_start
 		run_cmd nettest -6 -s &
 		sleep 1
-		run_cmd nettest -6 -r ${a}
+		run_cmd nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
 
@@ -2031,7 +2031,7 @@ ipv6_tcp_novrf()
 	log_start
 	run_cmd nettest -6 -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -r ${a} -0 ${a}
+	run_cmd nettest -6 -r ${a} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
 	for a in ${NSA_LO_IP6} ::1
@@ -2040,7 +2040,7 @@ ipv6_tcp_novrf()
 		show_hint "Should fail 'Connection refused' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -s -d ${NSA_DEV} &
 		sleep 1
-		run_cmd nettest -6 -r ${a}
+		run_cmd nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Device server, unbound client, local connection"
 	done
 
@@ -2048,7 +2048,7 @@ ipv6_tcp_novrf()
 	log_start
 	run_cmd nettest -6 -s &
 	sleep 1
-	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a}
+	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
 	for a in ${NSA_LO_IP6} ::1
@@ -2057,7 +2057,7 @@ ipv6_tcp_novrf()
 		show_hint "Should fail 'Connection refused' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -s &
 		sleep 1
-		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device client, local connection"
 	done
 
@@ -2066,7 +2066,7 @@ ipv6_tcp_novrf()
 		log_start
 		run_cmd nettest -6 -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd nettest -6  -d ${NSA_DEV} -r ${a}
+		run_cmd nettest -6  -d ${NSA_DEV} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Device server, device client, local conn"
 	done
 
@@ -2074,7 +2074,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -6 -d ${NSA_DEV} -r ${a}
+		run_cmd nettest -6 -d ${NSA_DEV} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client, local conn"
 	done
 }
@@ -2097,7 +2097,7 @@ ipv6_tcp_vrf()
 		show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 		run_cmd nettest -6 -s &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server"
 	done
 
@@ -2106,7 +2106,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
 
@@ -2115,7 +2115,7 @@ ipv6_tcp_vrf()
 	log_start
 	run_cmd nettest -6 -s -d ${VRF} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -6 -r ${a}
+	run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server"
 
 	for a in ${NSA_IP6} ${VRF_IP6} ${NSA_LINKIP6}%${NSB_DEV}
@@ -2123,7 +2123,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Device server"
 	done
 
@@ -2132,7 +2132,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -2142,7 +2142,7 @@ ipv6_tcp_vrf()
 	show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 	run_cmd nettest -6 -s &
 	sleep 1
-	run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
+	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} ${TO_ARG}
 	log_test_addr ${a} $? 1 "Global server, local connection"
 
 	#
@@ -2156,7 +2156,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -2 ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 	done
 
@@ -2165,7 +2165,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
 
@@ -2174,13 +2174,13 @@ ipv6_tcp_vrf()
 	log_start
 	run_cmd nettest -6 -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -6 -r ${a}
+	run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server"
 
 	log_start
 	run_cmd nettest -6 -s -d ${VRF} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -6 -r ${a}
+	run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server"
 
 	for a in ${NSA_IP6} ${NSA_LINKIP6}%${NSB_DEV}
@@ -2188,7 +2188,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Device server"
 	done
 
@@ -2197,7 +2197,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -2208,7 +2208,7 @@ ipv6_tcp_vrf()
 		show_hint "Fails 'No route to host' since client is not in VRF"
 		run_cmd nettest -6 -s -2 ${VRF} &
 		sleep 1
-		run_cmd nettest -6 -r ${a}
+		run_cmd nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, local connection"
 	done
 
@@ -2221,7 +2221,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd_nsb nettest -6 -s &
 		sleep 1
-		run_cmd nettest -6 -r ${a} -d ${VRF}
+		run_cmd nettest -6 -r ${a} -d ${VRF} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, VRF bind"
 	done
 
@@ -2230,7 +2230,7 @@ ipv6_tcp_vrf()
 	show_hint "Fails since VRF device does not allow linklocal addresses"
 	run_cmd_nsb nettest -6 -s &
 	sleep 1
-	run_cmd nettest -6 -r ${a} -d ${VRF}
+	run_cmd nettest -6 -r ${a} -d ${VRF} ${TO_ARG}
 	log_test_addr ${a} $? 1 "Client, VRF bind"
 
 	for a in ${NSB_IP6} ${NSB_LO_IP6} ${NSB_LINKIP6}
@@ -2238,7 +2238,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd_nsb nettest -6 -s &
 		sleep 1
-		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind"
 	done
 
@@ -2246,7 +2246,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -6 -r ${a} -d ${VRF}
+		run_cmd nettest -6 -r ${a} -d ${VRF} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, VRF client"
 	done
 
@@ -2254,7 +2254,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client"
 	done
 
@@ -2263,7 +2263,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -d ${VRF} -2 ${VRF} &
 		sleep 1
-		run_cmd nettest -6 -r ${a} -d ${VRF} -0 ${a}
+		run_cmd nettest -6 -r ${a} -d ${VRF} -0 ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local connection"
 	done
 
@@ -2271,7 +2271,7 @@ ipv6_tcp_vrf()
 	log_start
 	run_cmd nettest -6 -s -d ${VRF} -2 ${VRF} &
 	sleep 1
-	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a}
+	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, device client, local connection"
 
 	a=${NSA_IP6}
@@ -2279,13 +2279,13 @@ ipv6_tcp_vrf()
 	show_hint "Should fail since unbound client is out of VRF scope"
 	run_cmd nettest -6 -s -d ${VRF} &
 	sleep 1
-	run_cmd nettest -6 -r ${a}
+	run_cmd nettest -6 -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 1 "VRF server, unbound client, local connection"
 
 	log_start
 	run_cmd nettest -6 -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -r ${a} -d ${VRF} -0 ${a}
+	run_cmd nettest -6 -r ${a} -d ${VRF} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, VRF client, local connection"
 
 	for a in ${NSA_IP6} ${NSA_LINKIP6}
@@ -2293,7 +2293,7 @@ ipv6_tcp_vrf()
 		log_start
 		run_cmd nettest -6 -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a}
+		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Device server, device client, local connection"
 	done
 }
@@ -2333,13 +2333,13 @@ ipv6_udp_novrf()
 		log_start
 		run_cmd nettest -6 -D -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Device server"
 	done
 
@@ -2347,7 +2347,7 @@ ipv6_udp_novrf()
 	log_start
 	run_cmd nettest -6 -D -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd_nsb nettest -6 -D -r ${a}
+	run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server"
 
 	# should fail since loopback address is out of scope for a device
@@ -2357,7 +2357,7 @@ ipv6_udp_novrf()
 	#show_hint "Should fail since loopback address is out of scope"
 	#run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 	#sleep 1
-	#run_cmd_nsb nettest -6 -D -r ${a}
+	#run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 	#log_test_addr ${a} $? 1 "Device server"
 
 	# negative test - should fail
@@ -2365,7 +2365,7 @@ ipv6_udp_novrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused' since there is no server"
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -2377,35 +2377,35 @@ ipv6_udp_novrf()
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -0 ${NSA_IP6}
+		run_cmd nettest -6 -D -r ${a} -0 ${NSA_IP6} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client"
 
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -0 ${NSA_IP6}
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -0 ${NSA_IP6} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -C -0 ${NSA_IP6}
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -C -0 ${NSA_IP6} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device send via cmsg"
 
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP6}
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP6} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Client, device bind via IPV6_UNICAST_IF"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -6 -D -r ${a}
+		run_cmd nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, unbound client"
 
 		log_start
 		show_hint "Should fail 'Connection refused'"
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, device client"
 	done
 
@@ -2417,7 +2417,7 @@ ipv6_udp_novrf()
 		log_start
 		run_cmd nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -0 ${a} -1 ${a}
+		run_cmd nettest -6 -D -r ${a} -0 ${a} -1 ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
 
@@ -2425,7 +2425,7 @@ ipv6_udp_novrf()
 	log_start
 	run_cmd nettest -6 -s -D -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -r ${a}
+	run_cmd nettest -6 -D -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
 	for a in ${NSA_LO_IP6} ::1
@@ -2434,7 +2434,7 @@ ipv6_udp_novrf()
 		show_hint "Should fail 'Connection refused' since address is out of device scope"
 		run_cmd nettest -6 -s -D -d ${NSA_DEV} &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a}
+		run_cmd nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Device server, local connection"
 	done
 
@@ -2442,19 +2442,19 @@ ipv6_udp_novrf()
 	log_start
 	run_cmd nettest -6 -s -D &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
 	log_start
 	run_cmd nettest -6 -s -D &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -C -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -C -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device send via cmsg, local connection"
 
 	log_start
 	run_cmd nettest -6 -s -D &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -S -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -S -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client via IPV6_UNICAST_IF, local connection"
 
 	for a in ${NSA_LO_IP6} ::1
@@ -2463,21 +2463,21 @@ ipv6_udp_novrf()
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV}
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device client, local connection"
 
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -C
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -C ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device send via cmsg, local connection"
 
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S
+		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, device client via IP_UNICAST_IF, local connection"
 	done
 
@@ -2485,12 +2485,12 @@ ipv6_udp_novrf()
 	log_start
 	run_cmd nettest -6 -D -s -d ${NSA_DEV} -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} -0 ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} -0 ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, device client, local conn"
 
 	log_start
 	show_hint "Should fail 'Connection refused'"
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 1 "No server, device client, local conn"
 
 	# LLA to GUA
@@ -2499,7 +2499,7 @@ ipv6_udp_novrf()
 	log_start
 	run_cmd nettest -6 -s -D &
 	sleep 1
-	run_cmd_nsb nettest -6 -D -r ${NSA_IP6}
+	run_cmd_nsb nettest -6 -D -r ${NSA_IP6} ${TO_ARG}
 	log_test $? 0 "UDP in - LLA to GUA"
 
 	run_cmd_nsb ip -6 ro del ${NSA_IP6}/128 dev ${NSB_DEV}
@@ -2523,7 +2523,7 @@ ipv6_udp_vrf()
 		show_hint "Should fail 'Connection refused' since global server is disabled"
 		run_cmd nettest -6 -D -s &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server"
 	done
 
@@ -2532,7 +2532,7 @@ ipv6_udp_vrf()
 		log_start
 		run_cmd nettest -6 -D -d ${VRF} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
 
@@ -2541,7 +2541,7 @@ ipv6_udp_vrf()
 		log_start
 		run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 	done
 
@@ -2550,7 +2550,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		show_hint "Should fail 'Connection refused' since there is no server"
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -2563,7 +2563,7 @@ ipv6_udp_vrf()
 		show_hint "Should fail 'Connection refused' since global server is disabled"
 		run_cmd nettest -6 -D -s &
 		sleep 1
-		run_cmd nettest -6 -D -d ${VRF} -r ${a}
+		run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, VRF client, local conn"
 	done
 
@@ -2572,7 +2572,7 @@ ipv6_udp_vrf()
 		log_start
 		run_cmd nettest -6 -D -d ${VRF} -s &
 		sleep 1
-		run_cmd nettest -6 -D -d ${VRF} -r ${a}
+		run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 	done
 
@@ -2581,25 +2581,25 @@ ipv6_udp_vrf()
 	show_hint "Should fail 'Connection refused' since global server is disabled"
 	run_cmd nettest -6 -D -s &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 1 "Global server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${VRF} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${a}
+	run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Enslaved device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Enslaved device server, device client, local conn"
 
 	# disable global server
@@ -2614,7 +2614,7 @@ ipv6_udp_vrf()
 		log_start
 		run_cmd nettest -6 -D -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Global server"
 	done
 
@@ -2623,7 +2623,7 @@ ipv6_udp_vrf()
 		log_start
 		run_cmd nettest -6 -D -d ${VRF} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
 
@@ -2632,7 +2632,7 @@ ipv6_udp_vrf()
 		log_start
 		run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 		sleep 1
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 	done
 
@@ -2640,7 +2640,7 @@ ipv6_udp_vrf()
 	for a in ${NSA_IP6} ${VRF_IP6}
 	do
 		log_start
-		run_cmd_nsb nettest -6 -D -r ${a}
+		run_cmd_nsb nettest -6 -D -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server"
 	done
 
@@ -2650,23 +2650,23 @@ ipv6_udp_vrf()
 	log_start
 	run_cmd_nsb nettest -6 -D -s &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${NSB_IP6}
+	run_cmd nettest -6 -D -d ${VRF} -r ${NSB_IP6} ${TO_ARG}
 	log_test $? 0 "VRF client"
 
 	# negative test - should fail
 	log_start
-	run_cmd nettest -6 -D -d ${VRF} -r ${NSB_IP6}
+	run_cmd nettest -6 -D -d ${VRF} -r ${NSB_IP6} ${TO_ARG}
 	log_test $? 1 "No server, VRF client"
 
 	log_start
 	run_cmd_nsb nettest -6 -D -s &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_IP6}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_IP6} ${TO_ARG}
 	log_test $? 0 "Enslaved device client"
 
 	# negative test - should fail
 	log_start
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_IP6}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_IP6} ${TO_ARG}
 	log_test $? 1 "No server, enslaved device client"
 
 	#
@@ -2676,13 +2676,13 @@ ipv6_udp_vrf()
 	log_start
 	run_cmd nettest -6 -D -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${a}
+	run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 
 	#log_start
 	run_cmd nettest -6 -D -d ${VRF} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${a}
+	run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
 
@@ -2690,20 +2690,20 @@ ipv6_udp_vrf()
 	log_start
 	run_cmd nettest -6 -D -s -2 ${VRF} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${a}
+	run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${VRF} -s -2 ${VRF} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${a}
+	run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
 	# negative test - should fail
 	for a in ${NSA_IP6} ${VRF_IP6}
 	do
 		log_start
-		run_cmd nettest -6 -D -d ${VRF} -r ${a}
+		run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "No server, VRF client, local conn"
 	done
 
@@ -2712,29 +2712,29 @@ ipv6_udp_vrf()
 	log_start
 	run_cmd nettest -6 -D -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Global server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${VRF} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "VRF server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${VRF} -r ${a}
+	run_cmd nettest -6 -D -d ${VRF} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -d ${NSA_DEV} -s -2 ${NSA_DEV} &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 0 "Device server, device client, local conn"
 
 	log_start
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} ${TO_ARG}
 	log_test_addr ${a} $? 1 "No server, device client, local conn"
 
 
@@ -2742,33 +2742,33 @@ ipv6_udp_vrf()
 	log_start
 	run_cmd nettest -6 -D -s &
 	sleep 1
-	run_cmd_nsb nettest -6 -D -d ${NSB_DEV} -r ${NSA_LINKIP6}
+	run_cmd_nsb nettest -6 -D -d ${NSB_DEV} -r ${NSA_LINKIP6} ${TO_ARG}
 	log_test $? 0 "Global server, linklocal IP"
 
 	log_start
-	run_cmd_nsb nettest -6 -D -d ${NSB_DEV} -r ${NSA_LINKIP6}
+	run_cmd_nsb nettest -6 -D -d ${NSB_DEV} -r ${NSA_LINKIP6} ${TO_ARG}
 	log_test $? 1 "No server, linklocal IP"
 
 
 	log_start
 	run_cmd_nsb nettest -6 -D -s &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_LINKIP6}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_LINKIP6} ${TO_ARG}
 	log_test $? 0 "Enslaved device client, linklocal IP"
 
 	log_start
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_LINKIP6}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_LINKIP6} ${TO_ARG}
 	log_test $? 1 "No server, device client, peer linklocal IP"
 
 
 	log_start
 	run_cmd nettest -6 -D -s &
 	sleep 1
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSA_LINKIP6}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSA_LINKIP6} ${TO_ARG}
 	log_test $? 0 "Enslaved device client, local conn - linklocal IP"
 
 	log_start
-	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSA_LINKIP6}
+	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSA_LINKIP6} ${TO_ARG}
 	log_test $? 1 "No server, device client, local conn  - linklocal IP"
 
 	# LLA to GUA
@@ -2777,7 +2777,7 @@ ipv6_udp_vrf()
 	log_start
 	run_cmd nettest -6 -s -D &
 	sleep 1
-	run_cmd_nsb nettest -6 -D -r ${NSA_IP6}
+	run_cmd_nsb nettest -6 -D -r ${NSA_IP6} ${TO_ARG}
 	log_test $? 0 "UDP in - LLA to GUA"
 
 	run_cmd_nsb ip -6 ro del ${NSA_IP6}/128 dev ${NSB_DEV}
@@ -2932,7 +2932,7 @@ ipv6_rt()
 		log_start
 		run_cmd nettest ${varg} -s &
 		sleep 1
-		run_cmd_nsb nettest ${varg} -r ${a} &
+		run_cmd_nsb nettest ${varg} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -2946,7 +2946,7 @@ ipv6_rt()
 		log_start
 		run_cmd nettest ${varg} -d ${VRF} -s &
 		sleep 1
-		run_cmd_nsb nettest ${varg} -r ${a} &
+		run_cmd_nsb nettest ${varg} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -2960,7 +2960,7 @@ ipv6_rt()
 		log_start
 		run_cmd nettest ${varg} -d ${NSA_DEV} -s &
 		sleep 1
-		run_cmd_nsb nettest ${varg} -r ${a} &
+		run_cmd_nsb nettest ${varg} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -2975,7 +2975,7 @@ ipv6_rt()
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${VRF} -r ${NSB_IP6} &
+	run_cmd nettest ${varg} -d ${VRF} -r ${NSB_IP6} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -2986,7 +2986,7 @@ ipv6_rt()
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${NSB_IP6} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${NSB_IP6} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -3003,7 +3003,7 @@ ipv6_rt()
 		log_start
 		run_cmd nettest ${varg} -s &
 		sleep 1
-		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
+		run_cmd nettest ${varg} -d ${VRF} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -3017,7 +3017,7 @@ ipv6_rt()
 		log_start
 		run_cmd nettest ${varg} -d ${VRF} -s &
 		sleep 1
-		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
+		run_cmd nettest ${varg} -d ${VRF} -r ${a} & ${TO_ARG}
 		sleep 3
 		run_cmd ip link del ${VRF}
 		sleep 1
@@ -3030,7 +3030,7 @@ ipv6_rt()
 	log_start
 	run_cmd nettest ${varg} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -3041,7 +3041,7 @@ ipv6_rt()
 	log_start
 	run_cmd nettest ${varg} -d ${VRF} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -3052,7 +3052,7 @@ ipv6_rt()
 	log_start
 	run_cmd nettest ${varg} -d ${NSA_DEV} -s &
 	sleep 1
-	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
+	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} & ${TO_ARG}
 	sleep 3
 	run_cmd ip link del ${VRF}
 	sleep 1
@@ -3111,7 +3111,7 @@ netfilter_tcp_reset()
 		log_start
 		run_cmd nettest -s &
 		sleep 1
-		run_cmd_nsb nettest -r ${a}
+		run_cmd_nsb nettest -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, reject with TCP-reset on Rx"
 	done
 }
@@ -3129,7 +3129,7 @@ netfilter_icmp()
 		log_start
 		run_cmd nettest ${arg} -s &
 		sleep 1
-		run_cmd_nsb nettest ${arg} -r ${a}
+		run_cmd_nsb nettest ${arg} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global ${stype} server, Rx reject icmp-port-unreach"
 	done
 }
@@ -3168,7 +3168,7 @@ netfilter_tcp6_reset()
 		log_start
 		run_cmd nettest -6 -s &
 		sleep 1
-		run_cmd_nsb nettest -6 -r ${a}
+		run_cmd_nsb nettest -6 -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global server, reject with TCP-reset on Rx"
 	done
 }
@@ -3186,7 +3186,7 @@ netfilter_icmp6()
 		log_start
 		run_cmd nettest -6 -s ${arg} &
 		sleep 1
-		run_cmd_nsb nettest -6 ${arg} -r ${a}
+		run_cmd_nsb nettest -6 ${arg} -r ${a} ${TO_ARG}
 		log_test_addr ${a} $? 1 "Global ${stype} server, Rx reject icmp-port-unreach"
 	done
 }
@@ -3348,6 +3348,7 @@ usage: ${0##*/} OPTS
 	-t <test>   Test name/set to run
 	-p          Pause on fail
 	-P          Pause after each test
+	-T n        Set timeout for clients to n seconds
 	-v          Be verbose
 EOF
 }
@@ -3362,7 +3363,9 @@ TESTS_OTHER="use_cases"
 PAUSE_ON_FAIL=no
 PAUSE=no
 
-while getopts :46t:pPvh o
+declare -i ctimeout=0
+
+while getopts :46t:pPvhT: o
 do
 	case $o in
 		4) TESTS=ipv4;;
@@ -3370,11 +3373,16 @@ do
 		t) TESTS=$OPTARG;;
 		p) PAUSE_ON_FAIL=yes;;
 		P) PAUSE=yes;;
+		T) ctimeout=$OPTARG;;
 		v) VERBOSE=1;;
 		h) usage; exit 0;;
 		*) usage; exit 1;;
 	esac
 done
+
+if [ $ctimeout -ne 0 ]; then
+	TO_ARG="-t $ctimeout"
+fi
 
 # make sure we don't pause twice
 [ "${PAUSE}" = "yes" ] && PAUSE_ON_FAIL=no
