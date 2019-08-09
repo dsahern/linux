@@ -100,6 +100,7 @@ static char *msg = "Hello world!";
 static int msglen;
 static int quiet;
 static int try_broadcast = 1;
+static int forever;
 
 static char *timestamp(char *timebuf, int buflen)
 {
@@ -1183,6 +1184,30 @@ static int do_server(struct sock_args *args)
 		return 0;
 	}
 
+	if (!forever) {
+		switch(fork()) {
+		case 0:
+#if 0
+			setsid();
+			switch(fork()) {
+			case 0:
+				break;
+			case -1:
+				log_err_errno("fork failed");
+				return -1;
+			default:
+				return 0;
+			}
+#endif
+			break;
+		case -1:
+			log_err_errno("fork failed");
+			return -1;
+		default:
+			return 0;
+		}
+	}
+
 	if (args->type != SOCK_STREAM) {
 		rc = msg_loop(0, lsd, (void *) addr, alen, args);
 		close(lsd);
@@ -1569,7 +1594,6 @@ int main(int argc, char *argv[])
 	};
 	struct protoent *pe;
 	unsigned int tmp;
-	int forever = 0;
 
 	/* process inputs */
 	extern char *optarg;
@@ -1748,5 +1772,9 @@ int main(int argc, char *argv[])
 
 		return rc;
 	}
-	return do_client(&args);
+	do {
+		rc = do_client(&args);
+	} while (forever);
+
+	return rc;
 }
