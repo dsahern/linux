@@ -156,6 +156,8 @@ struct neighbour {
 	int			(*output)(struct neighbour *, struct sk_buff *);
 	const struct neigh_ops	*ops;
 	struct list_head	gc_list;
+	u32			managed;
+	struct list_head	manage_list;
 	struct rcu_head		rcu;
 	struct net_device	*dev;
 	u8			primary_key[0];
@@ -226,6 +228,9 @@ struct neigh_table {
 	struct neigh_statistics	__percpu *stats;
 	struct neigh_hash_table __rcu *nht;
 	struct pneigh_entry	**phash_buckets;
+	struct list_head	manage_list;
+	struct delayed_work	update_work;
+	struct delayed_work	probe_work;
 };
 
 enum {
@@ -569,4 +574,7 @@ static inline void neigh_update_is_router(struct neighbour *neigh, u32 flags,
 		*notify = 1;
 	}
 }
+
+void neigh_add_managed(struct neighbour *n);
+void neigh_rm_managed(struct neighbour *n);
 #endif

@@ -256,6 +256,93 @@ static int neigh_forced_gc(struct neigh_table *tbl)
 	return shrunk;
 }
 
+static struct workqueue_struct *neigh_wq;
+
+static bool neigh_schedule_dw(struct delayed_work *dwork, unsigned long delay)
+{
+	return queue_delayed_work(neigh_wq, dwork, delay);
+}
+
+static unsigned long neigh_get_work_interval(struct neigh_table *tbl)
+{
+	unsigned long interval = NEIGH_VAR(&tbl->parms, DELAY_PROBE_TIME);
+
+	if (interval > 1)
+		interval >>= 1;
+	return interval;
+}
+
+static void neigh_update_work(struct work_struct *work)
+{
+	struct neigh_table *tbl;
+	unsigned long interval;
+	struct neighbour *n;
+
+	tbl = container_of(work, struct neigh_table, update_work.work);
+	write_lock_bh(&tbl->lock);
+
+	list_for_each_entry(n, &tbl->manage_list, manage_list)
+		neigh_event_send(n, NULL);
+
+	interval = neigh_get_work_interval(tbl);
+	write_unlock_bh(&tbl->lock);
+
+	neigh_schedule_dw(&tbl->update_work, interval);
+}
+
+static void neigh_probe_unresolved(struct work_struct *work)
+{
+	struct neigh_table *tbl;
+	unsigned long interval;
+	struct neighbour *n;
+
+	tbl = container_of(work, struct neigh_table, probe_work.work);
+
+	write_lock_bh(&tbl->lock);
+
+	list_for_each_entry(n, &tbl->manage_list, manage_list) {
+		bool connected;
+
+		read_lock_bh(&n->lock);
+		connected = n->nud_state & NUD_VALID && !n->dead;
+		read_unlock_bh(&n->lock);
+
+		if (!connected)
+			neigh_event_send(n, NULL);
+	}
+
+	interval = neigh_get_work_interval(tbl);
+	write_unlock_bh(&tbl->lock);
+
+	neigh_schedule_dw(&tbl->probe_work, interval);
+}
+
+void neigh_add_managed(struct neighbour *n)
+{
+	struct neigh_table *tbl = n->tbl;
+
+	write_lock_bh(&tbl->lock);
+	write_lock(&n->lock);
+	if (list_empty(&n->manage_list))
+		list_add_tail(&n->manage_list, &tbl->manage_list);
+	n->managed++;
+	write_unlock(&n->lock);
+	write_unlock_bh(&tbl->lock);
+}
+
+void neigh_rm_managed(struct neighbour *n)
+{
+	struct neigh_table *tbl = n->tbl;
+
+	write_lock_bh(&tbl->lock);
+	write_lock(&n->lock);
+	n->managed--;
+	if (n->managed == 0)
+		list_del(&n->manage_list);
+	write_unlock(&n->lock);
+	write_unlock_bh(&tbl->lock);
+}
+
 static void neigh_add_timer(struct neighbour *n, unsigned long when)
 {
 	neigh_hold(n);
@@ -418,6 +505,7 @@ do_alloc:
 	refcount_set(&n->refcnt, 1);
 	n->dead		  = 1;
 	INIT_LIST_HEAD(&n->gc_list);
+	INIT_LIST_HEAD(&n->manage_list);
 
 	atomic_inc(&tbl->entries);
 out:
@@ -844,6 +932,7 @@ void neigh_destroy(struct neighbour *neigh)
 		pr_warn("Impossible event\n");
 
 	write_lock_bh(&neigh->lock);
+	list_del(&neigh->manage_list);
 	__skb_queue_purge(&neigh->arp_queue);
 	write_unlock_bh(&neigh->lock);
 	neigh->arp_queue_len_bytes = 0;
@@ -1720,6 +1809,12 @@ void neigh_table_init(int index, struct neigh_table *tbl)
 
 	tbl->last_flush = now;
 	tbl->last_rand	= now + tbl->parms.reachable_time * 20;
+
+	INIT_LIST_HEAD(&tbl->manage_list);
+	INIT_DELAYED_WORK(&tbl->update_work, neigh_update_work);
+	INIT_DELAYED_WORK(&tbl->probe_work, neigh_probe_unresolved);
+	neigh_schedule_dw(&tbl->update_work, 0);
+	neigh_schedule_dw(&tbl->probe_work, 0);
 
 	neigh_tables[index] = tbl;
 }
@@ -3723,6 +3818,10 @@ EXPORT_SYMBOL(neigh_sysctl_unregister);
 
 static int __init neigh_init(void)
 {
+	neigh_wq = alloc_workqueue("neigh", WQ_MEM_RECLAIM, 0);
+	if (!neigh_wq)
+		return -ENOMEM;
+
 	rtnl_register(PF_UNSPEC, RTM_NEWNEIGH, neigh_add, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_DELNEIGH, neigh_delete, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_GETNEIGH, neigh_get, neigh_dump_info, 0);
