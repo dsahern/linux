@@ -3394,6 +3394,9 @@ int fib6_nh_init(struct net *net, struct fib6_nh *fib6_nh,
 			goto out;
 	}
 
+	if (cfg->fc_flags & RTNH_F_MANAGE_NEIGH)
+		fib6_nh->fib_nh_flags |= RTNH_F_MANAGE_NEIGH;
+
 	if (cfg->fc_flags & RTNH_F_ONLINK) {
 		if (!dev) {
 			NL_SET_ERR_MSG(extack,
@@ -3477,12 +3480,14 @@ pcpu_alloc:
 
 	fib6_nh->fib_nh_dev = dev;
 	fib6_nh->fib_nh_oif = dev->ifindex;
-	err = 0;
+	err = fib_nhc_add_managed_gw(&fib6_nh->nh_common, extack);
+
 out:
 	if (idev)
 		in6_dev_put(idev);
 
 	if (err) {
+		fib6_nh->nh_common.nhc_flags &= ~RTNH_F_MANAGE_NEIGH;
 		lwtstate_put(fib6_nh->fib_nh_lws);
 		fib6_nh->fib_nh_lws = NULL;
 		if (dev)

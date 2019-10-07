@@ -16,7 +16,7 @@
 #include <net/ip6_fib.h>
 #include <net/netlink.h>
 
-#define NEXTHOP_VALID_USER_FLAGS RTNH_F_ONLINK
+#define NEXTHOP_VALID_USER_FLAGS (RTNH_F_ONLINK | RTNH_F_MANAGE_NEIGH)
 
 struct nexthop;
 

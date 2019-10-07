@@ -143,6 +143,64 @@ const struct fib_prop fib_props[RTN_MAX + 1] = {
 	},
 };
 
+/* rcu_read_lock_bh should be held */
+static int __fib_nhc_managed_gw(struct fib_nh_common *nhc, bool add,
+				struct netlink_ext_ack *extack)
+{
+	struct neighbour *n = NULL;
+
+	if (!(nhc->nhc_flags & RTNH_F_MANAGE_NEIGH))
+		return 0;
+
+	if (!nhc->nhc_gw_family) {
+		NL_SET_ERR_MSG(extack,
+			       "RTNH_F_MANAGE_NEIGH flag requires gateway");
+		return -EINVAL;
+	}
+
+	switch (nhc->nhc_gw_family) {
+	case AF_INET:
+pr_warn("__fib_nhc_managed_gw: add %d dev %s gw %pI4\n",
+	add, nhc->nhc_dev ? nhc->nhc_dev->name : "<not set>",
+	&nhc->nhc_gw.ipv4);
+		n = ip_neigh_gw4(nhc->nhc_dev, nhc->nhc_gw.ipv4);
+		break;
+	case AF_INET6:
+pr_warn("__fib_nhc_managed_gw: add %d dev %s gw %pI6c\n",
+	add, nhc->nhc_dev ? nhc->nhc_dev->name : "<not set>",
+	&nhc->nhc_gw.ipv6);
+		n = ip_neigh_gw6(nhc->nhc_dev, &nhc->nhc_gw.ipv6);
+		break;
+	default:
+		NL_SET_ERR_MSG(extack, "Unsupported address family");
+		return -EINVAL;
+	}
+
+	if (IS_ERR(n)) {
+		NL_SET_ERR_MSG(extack,
+			       "Failed to get neighbor entry for gateway");
+		return PTR_ERR(n);
+	}
+	if (add)
+		neigh_add_managed(n);
+	else
+		neigh_rm_managed(n);
+
+	return 0;
+}
+
+int fib_nhc_add_managed_gw(struct fib_nh_common *nhc,
+			   struct netlink_ext_ack *extack)
+{
+	return __fib_nhc_managed_gw(nhc, true, extack);
+}
+
+static int fib_nhc_rm_managed_gw(struct fib_nh_common *nhc,
+				 struct netlink_ext_ack *extack)
+{
+	return __fib_nhc_managed_gw(nhc, false, extack);
+}
+
 static void rt_fibinfo_free(struct rtable __rcu **rtp)
 {
 	struct rtable *rt = rcu_dereference_protected(*rtp, 1);
@@ -208,6 +266,8 @@ static void rt_fibinfo_free_cpus(struct rtable __rcu * __percpu *rtp)
 
 void fib_nh_common_release(struct fib_nh_common *nhc)
 {
+	fib_nhc_rm_managed_gw(nhc, NULL);
+
 	if (nhc->nhc_dev)
 		dev_put(nhc->nhc_dev);
 
@@ -1337,11 +1397,10 @@ static bool fib_valid_prefsrc(struct fib_config *cfg, __be32 fib_prefsrc)
 struct fib_info *fib_create_info(struct fib_config *cfg,
 				 struct netlink_ext_ack *extack)
 {
-	int err;
+	int err, nfail = 0, nhs = 1;
 	struct fib_info *fi = NULL;
 	struct nexthop *nh = NULL;
 	struct fib_info *ofi;
-	int nhs = 1;
 	struct net *net = cfg->fc_nlinfo.nl_net;
 
 	if (cfg->fc_type > RTN_MAX)
@@ -1527,6 +1586,13 @@ struct fib_info *fib_create_info(struct fib_config *cfg,
 						  fi->fib_scope);
 			if (nexthop_nh->fib_nh_gw_family == AF_INET6)
 				fi->fib_nh_is_v6 = true;
+
+			err = fib_nhc_add_managed_gw(&nexthop_nh->nh_common,
+						     extack);
+			if (err) {
+				nfail = nhsel;
+				goto err_inval;
+			}
 		} endfor_nexthops(fi)
 
 		fib_rebalance(fi);
@@ -1567,6 +1633,7 @@ link_it:
 		} endfor_nexthops(fi)
 	}
 	spin_unlock_bh(&fib_info_lock);
+
 	return fi;
 
 err_inval:
@@ -1574,6 +1641,16 @@ err_inval:
 
 failure:
 	if (fi) {
+		if (!fi->nh) {
+			struct fib_nh *fib_nh;
+
+			for (fib_nh = &fi->fib_nh[nfail];
+			     nfail < fib_info_num_path(fi);
+			     fib_nh++, nfail++) {
+				fib_nh->nh_common.nhc_flags &= ~RTNH_F_MANAGE_NEIGH;
+			}
+		}
+
 		fi->fib_dead = 1;
 		free_fib_info(fi);
 	}

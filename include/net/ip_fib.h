@@ -452,6 +452,8 @@ int fib_nh_common_init(struct fib_nh_common *nhc, struct nlattr *fc_encap,
 		       u16 fc_encap_type, void *cfg, gfp_t gfp_flags,
 		       struct netlink_ext_ack *extack);
 void fib_nh_common_release(struct fib_nh_common *nhc);
+int fib_nhc_add_managed_gw(struct fib_nh_common *nhc,
+			   struct netlink_ext_ack *extack);
 
 /* Exported by fib_trie.c */
 void fib_trie_init(void);

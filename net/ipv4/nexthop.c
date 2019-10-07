@@ -1245,10 +1245,18 @@ static struct nexthop *nexthop_create(struct net *net, struct nh_config *cfg,
 		return ERR_PTR(err);
 	}
 
+	rcu_assign_pointer(nh->nh_info, nhi);
+
+	err = fib_nhc_add_managed_gw(&nhi->fib_nhc, extack);
+	if (err) {
+		/* do a full cleanup of nhi */
+		nexthop_free_single(nh);
+		kfree(nh);
+		return ERR_PTR(err);
+	}
+
 	/* add the entry to the device based hash */
 	nexthop_devhash_add(net, nhi);
-
-	rcu_assign_pointer(nh->nh_info, nhi);
 
 	return nh;
 }
