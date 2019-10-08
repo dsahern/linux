@@ -1877,6 +1877,7 @@ const struct nla_policy nda_policy[NDA_MAX+1] = {
 	[NDA_IFINDEX]		= { .type = NLA_U32 },
 	[NDA_MASTER]		= { .type = NLA_U32 },
 	[NDA_PROTOCOL]		= { .type = NLA_U8 },
+	[NDA_MANAGED]		= { .type = NLA_FLAG },
 };
 
 static int neigh_delete(struct sk_buff *skb, struct nlmsghdr *nlh,
@@ -2003,6 +2004,11 @@ static int neigh_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (ndm->ndm_flags & NTF_PROXY) {
 		struct pneigh_entry *pn;
 
+		if (tb[NDA_MANAGED]) {
+			NL_SET_ERR_MSG(extack, "MANAGED flag incompatible with NTF_PROXY");
+			goto out;
+		}
+
 		err = -ENOBUFS;
 		pn = pneigh_lookup(tbl, net, dst, dev, 1);
 		if (pn) {
@@ -2021,6 +2027,12 @@ static int neigh_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 	if (tbl->allow_add && !tbl->allow_add(dev, extack)) {
 		err = -EINVAL;
+		goto out;
+	}
+
+	if (tb[NDA_MANAGED] &&
+	    (ndm->ndm_state & (NUD_PERMANENT | NTF_EXT_LEARNED))) {
+		NL_SET_ERR_MSG(extack, "MANAGED flag incompatible with permanent states");
 		goto out;
 	}
 
@@ -2058,12 +2070,21 @@ static int neigh_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (ndm->ndm_flags & NTF_ROUTER)
 		flags |= NEIGH_UPDATE_F_ISROUTER;
 
+	if (tb[NDA_MANAGED])
+		neigh_add_managed(neigh);
+
 	if (ndm->ndm_flags & NTF_USE) {
 		neigh_event_send(neigh, NULL);
 		err = 0;
-	} else
+	} else {
+		if (tb[NDA_MANAGED] && lladdr == NULL) {
+			err = 0;
+			goto out;
+		}
+
 		err = __neigh_update(neigh, lladdr, ndm->ndm_state, flags,
 				     NETLINK_CB(skb).portid, extack);
+	}
 
 	if (protocol)
 		neigh->protocol = protocol;

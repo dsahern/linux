@@ -29,6 +29,7 @@ enum {
 	NDA_LINK_NETNSID,
 	NDA_SRC_VNI,
 	NDA_PROTOCOL,  /* Originator of entry */
+	NDA_MANAGED,   /* flag: kernel tries to keep in valid state */
 	__NDA_MAX
 };
 
