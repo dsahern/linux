@@ -70,6 +70,10 @@ struct xdp_buff {
 	void *data_hard_start;
 	unsigned long handle;
 	struct xdp_rxq_info *rxq;
+
+	/* vlan acceleration ({r,t}x-vlan-offload) */
+	u16 vlan_tci_rx;  /* set by NIC driver for XDP program */
+	u16 vlan_tci_tx;  /* set by XDP program for redirect */
 };
 
 struct xdp_frame {
@@ -77,6 +81,8 @@ struct xdp_frame {
 	u16 len;
 	u16 headroom;
 	u16 metasize;
+	u16 vlan_tci; /* vlan accel; tx path */
+
 	/* Lifetime of xdp_rxq_info is limited to NAPI/enqueue time,
 	 * while mem info is valid on remote CPU.
 	 */
@@ -121,6 +127,8 @@ struct xdp_frame *convert_to_xdp_frame(struct xdp_buff *xdp)
 
 	/* rxq only valid until napi_schedule ends, convert to xdp_mem_info */
 	xdp_frame->mem = xdp->rxq->mem;
+
+	xdp_frame->vlan_tci = xdp->vlan_tci_tx;
 
 	return xdp_frame;
 }

@@ -3191,6 +3191,10 @@ struct xdp_md {
 	/* Below access go through struct xdp_rxq_info */
 	__u32 ingress_ifindex; /* rxq->dev->ifindex */
 	__u32 rx_queue_index;  /* rxq->queue_index  */
+
+	/* vlan acceleration ({r,t}x-vlan-offload) */
+	u16 vlan_tci_rx;  /* set by NIC driver for XDP program */
+	u16 vlan_tci_tx;  /* set by XDP program for redirect */
 };
 
 enum sk_action {

@@ -2383,6 +2383,16 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 
 		/* retrieve a buffer from the ring */
 		if (!skb) {
+			if (qword & BIT(I40E_RX_DESC_STATUS_L2TAG1P_SHIFT)) {
+				u16 vlan_tag;
+
+				vlan_tag = rx_desc->wb.qword0.lo_dword.l2tag1;
+				xdp.vlan_tci_rx = le16_to_cpu(vlan_tag);
+			} else {
+				xdp.vlan_tci_rx = 0;
+			}
+			xdp.vlan_tci_tx = 0;
+
 			xdp.data = page_address(rx_buffer->page) +
 				   rx_buffer->page_offset;
 			xdp.data_meta = xdp.data;
@@ -3503,11 +3513,13 @@ dma_error:
 static int i40e_xmit_xdp_ring(struct xdp_frame *xdpf,
 			      struct i40e_ring *xdp_ring)
 {
+	u32 td_cmd = I40E_TX_DESC_CMD_ICRC | I40E_TXD_CMD;
 	u16 i = xdp_ring->next_to_use;
 	struct i40e_tx_buffer *tx_bi;
 	struct i40e_tx_desc *tx_desc;
 	void *data = xdpf->data;
 	u32 size = xdpf->len;
+	u32 td_tag = 0;
 	dma_addr_t dma;
 
 	if (!unlikely(I40E_DESC_UNUSED(xdp_ring))) {
@@ -3523,15 +3535,23 @@ static int i40e_xmit_xdp_ring(struct xdp_frame *xdpf,
 	tx_bi->gso_segs = 1;
 	tx_bi->xdpf = xdpf;
 
+	if (xdpf->vlan_tci) {
+		if (xdp_ring->netdev->features & NETIF_F_HW_VLAN_CTAG_TX) {
+			td_tag = htons(xdpf->vlan_tci);
+			td_cmd |= I40E_TX_DESC_CMD_IL2TAG1;
+		} else {
+			// TO-DO: counter?
+			return I40E_XDP_CONSUMED;
+		}
+	}
+
 	/* record length, and DMA address */
 	dma_unmap_len_set(tx_bi, len, size);
 	dma_unmap_addr_set(tx_bi, dma, dma);
 
 	tx_desc = I40E_TX_DESC(xdp_ring, i);
 	tx_desc->buffer_addr = cpu_to_le64(dma);
-	tx_desc->cmd_type_offset_bsz = build_ctob(I40E_TX_DESC_CMD_ICRC
-						  | I40E_TXD_CMD,
-						  0, size, 0);
+	tx_desc->cmd_type_offset_bsz = build_ctob(td_cmd, 0, size, td_tag);
 
 	/* Make certain all of the status bits have been updated
 	 * before next_to_watch is written.
