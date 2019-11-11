@@ -995,6 +995,7 @@ static int netsec_process_rx(struct netsec_priv *priv, int budget)
 		xdp.data = desc->addr + NETSEC_RXBUF_HEADROOM;
 		xdp_set_data_meta_invalid(&xdp);
 		xdp.data_end = xdp.data + pkt_len;
+		xdp.vlan_tci_rx = 0;
 		xdp.rxq = &dring->xdp_rxq;
 
 		if (xdp_prog) {

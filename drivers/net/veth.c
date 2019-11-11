@@ -507,6 +507,7 @@ static struct sk_buff *veth_xdp_rcv_one(struct veth_rq *rq,
 		xdp.data_end = frame->data + frame->len;
 		xdp.data_meta = frame->data - frame->metasize;
 		xdp.rxq = &rq->xdp_rxq;
+		xdp.vlan_tci_rx = 0;
 
 		act = bpf_prog_run_xdp(xdp_prog, &xdp);
 
@@ -634,6 +635,7 @@ static struct sk_buff *veth_xdp_rcv_skb(struct veth_rq *rq, struct sk_buff *skb,
 	xdp.data = skb_mac_header(skb);
 	xdp.data_end = xdp.data + pktlen;
 	xdp.data_meta = xdp.data;
+	xdp.vlan_tci_rx = 0;
 	xdp.rxq = &rq->xdp_rxq;
 	orig_data = xdp.data;
 	orig_data_end = xdp.data_end;

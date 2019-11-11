@@ -731,6 +731,7 @@ static void cpsw_rx_handler(void *token, int len, int status)
 		}
 
 		xdp_set_data_meta_invalid(&xdp);
+		xdp.vlan_tci_rx = 0;
 
 		xdp.data_hard_start = pa;
 		xdp.rxq = &priv->xdp_rxq[ch];

@@ -2157,6 +2157,7 @@ mvneta_swbm_rx_frame(struct mvneta_port *pp,
 	xdp->data = data + MVNETA_SKB_HEADROOM + MVNETA_MH_SIZE;
 	xdp->data_end = xdp->data + data_len;
 	xdp_set_data_meta_invalid(xdp);
+	xdp->vlan_tci_rx = 0;
 
 	if (xdp_prog) {
 		u32 ret;

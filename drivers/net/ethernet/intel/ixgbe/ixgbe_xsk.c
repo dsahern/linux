@@ -487,6 +487,7 @@ int ixgbe_clean_rx_irq_zc(struct ixgbe_q_vector *q_vector,
 		xdp.data_hard_start = xdp.data - XDP_PACKET_HEADROOM;
 		xdp.data_end = xdp.data + size;
 		xdp.handle = bi->handle;
+		xdp.vlan_tci_rx = 0;
 
 		xdp_res = ixgbe_run_xdp_zc(adapter, rx_ring, &xdp);
 

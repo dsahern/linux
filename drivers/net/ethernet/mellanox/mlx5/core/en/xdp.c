@@ -138,6 +138,10 @@ bool mlx5e_xdp_handle(struct mlx5e_rq *rq, struct mlx5e_dma_info *di,
 	if (xsk)
 		xdp.handle = di->xsk.handle;
 	xdp.rxq = &rq->xdp_rxq;
+	if (cqe && cqe_has_vlan(cqe))
+		xdp.vlan_tci_rx = be16_to_cpu(cqe->vlan_info);
+	else
+		xdp.vlan_tci_rx = 0;
 
 	act = bpf_prog_run_xdp(prog, &xdp);
 	if (xsk) {

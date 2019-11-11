@@ -1065,6 +1065,7 @@ static bool qede_rx_xdp(struct qede_dev *edev,
 	xdp.data = xdp.data_hard_start + *data_offset;
 	xdp_set_data_meta_invalid(&xdp);
 	xdp.data_end = xdp.data + *len;
+	xdp.vlan_tci_rx = 0;
 	xdp.rxq = &rxq->xdp_rxq;
 
 	/* Queues always have a full reset currently, so for the time

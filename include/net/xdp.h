@@ -70,6 +70,9 @@ struct xdp_buff {
 	void *data_hard_start;
 	unsigned long handle;
 	struct xdp_rxq_info *rxq;
+
+	/* vlan acceleration (rx-vlan-offload) */
+	u16 vlan_tci_rx;  /* set by NIC driver for XDP program */
 };
 
 struct xdp_frame {

@@ -579,6 +579,7 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 		xdp.data_hard_start = xdp.data - XDP_PACKET_HEADROOM;
 		xdp.data_end = xdp.data + size;
 		xdp.handle = bi->handle;
+		xdp.vlan_tci_rx = 0;
 
 		xdp_res = i40e_run_xdp_zc(rx_ring, &xdp);
 		if (xdp_res) {

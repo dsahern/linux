@@ -1913,6 +1913,7 @@ static int nfp_net_rx(struct nfp_net_rx_ring *rx_ring, int budget)
 			xdp.data = orig_data;
 			xdp.data_meta = orig_data;
 			xdp.data_end = orig_data + pkt_len;
+			xdp.vlan_tci_rx = 0;
 
 			act = bpf_prog_run_xdp(xdp_prog, &xdp);
 

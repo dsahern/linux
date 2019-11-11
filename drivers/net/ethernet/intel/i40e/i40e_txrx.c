@@ -2383,6 +2383,15 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 
 		/* retrieve a buffer from the ring */
 		if (!skb) {
+			if (qword & BIT(I40E_RX_DESC_STATUS_L2TAG1P_SHIFT)) {
+				u16 vlan_tag;
+
+				vlan_tag = rx_desc->wb.qword0.lo_dword.l2tag1;
+				xdp.vlan_tci_rx = le16_to_cpu(vlan_tag);
+			} else {
+				xdp.vlan_tci_rx = 0;
+			}
+
 			xdp.data = page_address(rx_buffer->page) +
 				   rx_buffer->page_offset;
 			xdp.data_meta = xdp.data;

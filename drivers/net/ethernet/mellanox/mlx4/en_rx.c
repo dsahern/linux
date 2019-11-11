@@ -780,6 +780,16 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 			xdp.data = va;
 			xdp_set_data_meta_invalid(&xdp);
 			xdp.data_end = xdp.data + length;
+			xdp.vlan_tci_rx = 0;
+			if ((cqe->vlan_my_qpn &
+			     cpu_to_be32(MLX4_CQE_CVLAN_PRESENT_MASK)) &&
+			    (dev->features & NETIF_F_HW_VLAN_CTAG_RX))
+				xdp.vlan_tci_rx = be16_to_cpu(cqe->sl_vid);
+			else if ((cqe->vlan_my_qpn &
+				  cpu_to_be32(MLX4_CQE_SVLAN_PRESENT_MASK)) &&
+				 (dev->features & NETIF_F_HW_VLAN_STAG_RX))
+				xdp.vlan_tci_rx = be16_to_cpu(cqe->sl_vid);
+
 			orig_data = xdp.data;
 
 			act = bpf_prog_run_xdp(xdp_prog, &xdp);

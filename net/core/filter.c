@@ -6874,6 +6874,13 @@ static bool __is_valid_xdp_access(int off, int size)
 		return false;
 	if (off % size != 0)
 		return false;
+
+	if (off == offsetof(struct xdp_md, vlan_tci_rx)) {
+		if (size != sizeof(u16))
+			return false;
+		return true;
+	}
+
 	if (size != sizeof(__u32))
 		return false;
 
@@ -7815,6 +7822,10 @@ static u32 xdp_convert_ctx_access(enum bpf_access_type type,
 		*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg, si->dst_reg,
 				      offsetof(struct xdp_rxq_info,
 					       queue_index));
+		break;
+	case offsetof(struct xdp_md, vlan_tci_rx):
+		*insn++ = BPF_LDX_MEM(BPF_H, si->dst_reg, si->src_reg,
+				      offsetof(struct xdp_buff, vlan_tci_rx));
 		break;
 	}
 

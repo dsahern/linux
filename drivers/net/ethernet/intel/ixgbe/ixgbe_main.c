@@ -2323,7 +2323,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 			xdp.data_hard_start = xdp.data -
 					      ixgbe_rx_offset(rx_ring);
 			xdp.data_end = xdp.data + size;
-
+			xdp.vlan_tci_rx = 0;
 			skb = ixgbe_run_xdp(adapter, rx_ring, &xdp);
 		}
 
