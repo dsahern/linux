@@ -630,6 +630,11 @@ static void efx_rx_deliver(struct efx_channel *channel, u8 *eh,
 
 	efx_rx_skb_attach_timestamp(channel, skb);
 
+	if (channel->efx->net_dev->features & NETIF_F_RXHASH)
+                skb_set_hash(skb, efx_rx_buf_hash(channel->efx, eh),
+                             (rx_buf->flags & EFX_RX_PKT_TCP ?
+			      PKT_HASH_TYPE_L4 : PKT_HASH_TYPE_L3));
+
 	if (channel->type->receive_skb)
 		if (channel->type->receive_skb(channel, skb))
 			return;
