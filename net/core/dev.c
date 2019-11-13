@@ -4654,6 +4654,8 @@ static int netif_rx_internal(struct sk_buff *skb)
 		if (cpu < 0)
 			cpu = smp_processor_id();
 
+		trace_netif_rps(skb, cpu);
+
 		ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
 
 		rcu_read_unlock();
@@ -5345,6 +5347,7 @@ static int netif_receive_skb_internal(struct sk_buff *skb)
 		struct rps_dev_flow voidflow, *rflow = &voidflow;
 		int cpu = get_rps_cpu(skb->dev, skb, &rflow);
 
+		trace_netif_rps(skb, cpu);
 		if (cpu >= 0) {
 			ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
 			rcu_read_unlock();
@@ -5378,6 +5381,7 @@ static void netif_receive_skb_list_internal(struct list_head *head)
 			struct rps_dev_flow voidflow, *rflow = &voidflow;
 			int cpu = get_rps_cpu(skb->dev, skb, &rflow);
 
+			trace_netif_rps(skb, cpu);
 			if (cpu >= 0) {
 				/* Will be handled, remove from list */
 				skb_list_del_init(skb);

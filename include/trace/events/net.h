@@ -326,6 +326,33 @@ DEFINE_EVENT(net_dev_rx_exit_template, netif_receive_skb_list_exit,
 	TP_ARGS(ret)
 );
 
+TRACE_EVENT(netif_rps,
+
+	TP_PROTO(struct sk_buff *skb, int cpu),
+
+	TP_ARGS(skb, cpu),
+
+	TP_STRUCT__entry(
+		__field(	void *,		skbaddr		)
+		__field(	unsigned int,	len		)
+		__string(	name,		skb->dev->name	)
+		__field(	int,		rps_cpu		)
+		__field(	u16,		queue		)
+	),
+
+	TP_fast_assign(
+		__entry->skbaddr = skb;
+		__entry->len = skb->len;
+		__entry->rps_cpu = cpu;
+		__entry->queue = skb_get_rx_queue(skb);
+		__assign_str(name, skb->dev->name);
+	),
+
+	TP_printk("dev=%s skbaddr=%p len=%u rps_cpu=%d queue=%u",
+		__get_str(name), __entry->skbaddr, __entry->len,
+	       	__entry->rps_cpu, __entry->queue)
+);
+
 #endif /* _TRACE_NET_H */
 
 /* This part must be outside protection */
