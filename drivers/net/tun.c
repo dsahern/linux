@@ -239,6 +239,7 @@ struct tun_struct {
 	u32 rx_batched;
 	struct tun_pcpu_stats __percpu *pcpu_stats;
 	struct bpf_prog __rcu *xdp_prog;
+	struct bpf_prog __rcu *xdp_tx_prog;
 	struct tun_prog __rcu *steering_prog;
 	struct tun_prog __rcu *filter_prog;
 	struct ethtool_link_ksettings link_ksettings;
@@ -860,7 +861,8 @@ static int tun_attach(struct tun_struct *tun, struct file *file,
 		tun_napi_init(tun, tfile, napi, napi_frags);
 	}
 
-	if (rtnl_dereference(tun->xdp_prog))
+	if (rtnl_dereference(tun->xdp_prog) ||
+	    rtnl_dereference(tun->xdp_tx_prog))
 		sock_set_flag(&tfile->sk, SOCK_XDP);
 
 	/* device is allowed to go away first, so no need to hold extra
@@ -1189,15 +1191,24 @@ tun_net_get_stats64(struct net_device *dev, struct rtnl_link_stats64 *stats)
 }
 
 static int tun_xdp_set(struct net_device *dev, struct bpf_prog *prog,
-		       struct netlink_ext_ack *extack)
+		       bool tx, struct netlink_ext_ack *extack)
 {
 	struct tun_struct *tun = netdev_priv(dev);
 	struct tun_file *tfile;
 	struct bpf_prog *old_prog;
+	bool has_other;
 	int i;
 
-	old_prog = rtnl_dereference(tun->xdp_prog);
-	rcu_assign_pointer(tun->xdp_prog, prog);
+	if (tx) {
+		old_prog = rtnl_dereference(tun->xdp_tx_prog);
+		rcu_assign_pointer(tun->xdp_tx_prog, prog);
+		has_other = !!rtnl_dereference(tun->xdp_prog);
+	} else {
+		old_prog = rtnl_dereference(tun->xdp_prog);
+		rcu_assign_pointer(tun->xdp_prog, prog);
+		has_other = !!rtnl_dereference(tun->xdp_tx_prog);
+	}
+
 	if (old_prog)
 		bpf_prog_put(old_prog);
 
@@ -1205,25 +1216,29 @@ static int tun_xdp_set(struct net_device *dev, struct bpf_prog *prog,
 		tfile = rtnl_dereference(tun->tfiles[i]);
 		if (prog)
 			sock_set_flag(&tfile->sk, SOCK_XDP);
-		else
+		else if (!has_other)
 			sock_reset_flag(&tfile->sk, SOCK_XDP);
 	}
 	list_for_each_entry(tfile, &tun->disabled, next) {
 		if (prog)
 			sock_set_flag(&tfile->sk, SOCK_XDP);
-		else
+		else if (!has_other)
 			sock_reset_flag(&tfile->sk, SOCK_XDP);
 	}
 
 	return 0;
 }
 
-static u32 tun_xdp_query(struct net_device *dev)
+static u32 tun_xdp_query(struct net_device *dev, bool tx)
 {
 	struct tun_struct *tun = netdev_priv(dev);
 	const struct bpf_prog *xdp_prog;
 
-	xdp_prog = rtnl_dereference(tun->xdp_prog);
+	if (tx)
+		xdp_prog = rtnl_dereference(tun->xdp_tx_prog);
+	else
+		xdp_prog = rtnl_dereference(tun->xdp_prog);
+
 	if (xdp_prog)
 		return xdp_prog->aux->id;
 
@@ -1234,13 +1249,19 @@ static int tun_xdp(struct net_device *dev, struct netdev_bpf *xdp)
 {
 	switch (xdp->command) {
 	case XDP_SETUP_PROG:
-		return tun_xdp_set(dev, xdp->prog, xdp->extack);
+		return tun_xdp_set(dev, xdp->prog, false, xdp->extack);
+	case XDP_SETUP_PROG_TX:
+		return tun_xdp_set(dev, xdp->prog, true, xdp->extack);
 	case XDP_QUERY_PROG:
-		xdp->prog_id = tun_xdp_query(dev);
-		return 0;
+		xdp->prog_id = tun_xdp_query(dev, false);
+		break;
+	case XDP_QUERY_PROG_TX:
+		xdp->prog_id = tun_xdp_query(dev, true);
+		break;
 	default:
 		return -EINVAL;
 	}
+	return 0;
 }
 
 static int tun_net_change_carrier(struct net_device *dev, bool new_carrier)
@@ -1278,11 +1299,52 @@ static void __tun_xdp_flush_tfile(struct tun_file *tfile)
 	tfile->socket.sk->sk_data_ready(tfile->socket.sk);
 }
 
+/* skb based need to figure out gso handling */
+static int tun_xdp_tx_frame(struct tun_struct *tun,
+			    struct tun_file *tfile,
+			    struct xdp_frame *frame)
+{
+	struct bpf_prog *xdp_prog;
+	struct xdp_buff xdp = {
+		.data_hard_start = frame,
+		.data = frame->data,
+		.data_end = frame->data + frame->len,
+		// This needs to be tx, not rx
+		.rxq = &tfile->xdp_rxq,
+	};
+	u32 act;
+
+	xdp_prog = rcu_dereference(tun->xdp_tx_prog);
+	if (!xdp_prog)
+		return 0;
+
+	xdp_set_data_meta_invalid(&xdp);
+
+	act = bpf_prog_run_xdp(xdp_prog, &xdp);
+	switch (act) {
+	case XDP_PASS:
+		break;
+	default:
+		bpf_warn_invalid_xdp_action(act);
+		/* fall through */
+	case XDP_ABORTED:
+		trace_xdp_exception(tun->dev, xdp_prog, act);
+		/* fall through */
+	case XDP_DROP:
+		this_cpu_inc(tun->pcpu_stats->rx_dropped);
+		return 1;
+	}
+
+	return 0;
+}
+
+
 static int tun_xdp_xmit(struct net_device *dev, int n,
 			struct xdp_frame **frames, u32 flags)
 {
 	struct tun_struct *tun = netdev_priv(dev);
 	struct tun_file *tfile;
+	bool has_xdp_tx;
 	u32 numqueues;
 	int drops = 0;
 	int cnt = n;
@@ -1292,6 +1354,8 @@ static int tun_xdp_xmit(struct net_device *dev, int n,
 		return -EINVAL;
 
 	rcu_read_lock();
+
+	has_xdp_tx = !!rcu_access_pointer(tun->xdp_tx_prog);
 
 resample:
 	numqueues = READ_ONCE(tun->numqueues);
@@ -1308,12 +1372,17 @@ resample:
 	spin_lock(&tfile->tx_ring.producer_lock);
 	for (i = 0; i < n; i++) {
 		struct xdp_frame *xdp = frames[i];
+		void *frame;
+
+		if (has_xdp_tx && tun_xdp_tx_frame(tun, tfile, xdp))
+			goto drop;
+
 		/* Encode the XDP flag into lowest bit for consumer to differ
 		 * XDP buffer from sk_buff.
 		 */
-		void *frame = tun_xdp_to_ptr(xdp);
-
+		frame = tun_xdp_to_ptr(xdp);
 		if (__ptr_ring_produce(&tfile->tx_ring, frame)) {
+drop:
 			this_cpu_inc(tun->pcpu_stats->tx_dropped);
 			xdp_return_frame_rx_napi(xdp);
 			drops++;

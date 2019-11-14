@@ -169,6 +169,7 @@ enum {
 	IFLA_MAX_MTU,
 	IFLA_PROP_LIST,
 	IFLA_ALT_IFNAME, /* Alternative ifname */
+	IFLA_XDP_TX,
 	__IFLA_MAX
 };
 
@@ -957,6 +958,10 @@ enum {
 					 XDP_FLAGS_HW_MODE)
 #define XDP_FLAGS_MASK			(XDP_FLAGS_UPDATE_IF_NOEXIST | \
 					 XDP_FLAGS_MODES)
+#define XDP_TX_FLAGS_MODES		XDP_FLAGS_DRV_MODE
+#define XDP_TX_FLAGS_MASK		(XDP_FLAGS_UPDATE_IF_NOEXIST | \
+					 XDP_TX_FLAGS_MODES)
+
 
 /* These are stored into IFLA_XDP_ATTACHED on dump. */
 enum {
