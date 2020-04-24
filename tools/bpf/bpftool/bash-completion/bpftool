@@ -477,7 +477,7 @@ _bpftool()
                                 cgroup/post_bind4 cgroup/post_bind6 \
                                 cgroup/sysctl cgroup/getsockopt \
                                 cgroup/setsockopt struct_ops \
-                                fentry fexit freplace" -- \
+                                fentry fexit freplace xdp_egress" -- \
                                                    "$cur" ) )
                             return 0
                             ;;
@@ -1022,7 +1022,7 @@ _bpftool()
             ;;
         net)
             local PROG_TYPE='id pinned tag name'
-            local ATTACH_TYPES='xdp xdpgeneric xdpdrv xdpoffload'
+            local ATTACH_TYPES='xdp xdpgeneric xdpdrv xdpoffload xdp_egress'
             case $command in
                 show|list)
                     [[ $prev != "$command" ]] && return 0

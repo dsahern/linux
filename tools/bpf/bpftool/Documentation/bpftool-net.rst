@@ -26,7 +26,8 @@ NET COMMANDS
 |	**bpftool** **net help**
 |
 |	*PROG* := { **id** *PROG_ID* | **pinned** *FILE* | **tag** *PROG_TAG* }
-|	*ATTACH_TYPE* := { **xdp** | **xdpgeneric** | **xdpdrv** | **xdpoffload** }
+|	*ATTACH_TYPE* :=
+|       { **xdp** | **xdpgeneric** | **xdpdrv** | **xdpoffload** | **xdp_egress** }
 
 DESCRIPTION
 ===========
@@ -63,6 +64,7 @@ DESCRIPTION
                   **xdpgeneric** - Generic XDP. runs at generic XDP hook when packet already enters receive path as skb;
                   **xdpdrv** - Native XDP. runs earliest point in driver's receive path;
                   **xdpoffload** - Offload XDP. runs directly on NIC on each packet reception;
+                  **xdp_egress** - XDP in egress path. runs at core networking level;
 
 	**bpftool** **net detach** *ATTACH_TYPE* **dev** *NAME*
                   Detach bpf program attached to network interface *NAME* with
