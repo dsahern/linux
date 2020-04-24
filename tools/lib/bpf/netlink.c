@@ -280,6 +280,10 @@ static int get_xdp_info(void *cookie, void *msg, struct nlattr **tb)
 		xdp_id->info.hw_prog_id = libbpf_nla_getattr_u32(
 			xdp_tb[IFLA_XDP_HW_PROG_ID]);
 
+	if (xdp_tb[IFLA_XDP_EGRESS_PROG_ID])
+		xdp_id->info.egress_prog_id = libbpf_nla_getattr_u32(
+			xdp_tb[IFLA_XDP_EGRESS_PROG_ID]);
+
 	return 0;
 }
 
@@ -331,6 +335,8 @@ static __u32 get_xdp_id(struct xdp_link_info *info, __u32 flags)
 		return info->hw_prog_id;
 	if (flags & XDP_FLAGS_SKB_MODE)
 		return info->skb_prog_id;
+	if (flags & XDP_FLAGS_EGRESS_MODE)
+		return info->egress_prog_id;
 
 	return 0;
 }

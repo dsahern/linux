@@ -463,6 +463,7 @@ struct xdp_link_info {
 	__u32 hw_prog_id;
 	__u32 skb_prog_id;
 	__u8 attach_mode;
+	__u32 egress_prog_id;
 };
 
 struct bpf_xdp_set_link_opts {
