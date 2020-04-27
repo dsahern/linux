@@ -982,7 +982,7 @@ static size_t rtnl_xdp_size(void)
 	size_t xdp_size = nla_total_size(0) +	/* nest IFLA_XDP */
 			  nla_total_size(1) +	/* XDP_ATTACHED */
 			  nla_total_size(4) +	/* XDP_PROG_ID (or 1st mode) */
-			  nla_total_size(4);	/* XDP_<mode>_PROG_ID */
+			  nla_total_size(4) * 2; /* XDP_<mode>_PROG_ID */
 
 	return xdp_size;
 }
@@ -1402,6 +1402,18 @@ static int rtnl_fill_link_ifmap(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
+static u32 rtnl_xdp_prog_egress(struct net_device *dev)
+{
+	const struct bpf_prog *prog;
+
+	ASSERT_RTNL();
+
+	prog = rtnl_dereference(dev->xdp_egress_prog);
+	if (!prog)
+		return 0;
+	return prog->aux->id;
+}
+
 static u32 rtnl_xdp_prog_skb(struct net_device *dev)
 {
 	const struct bpf_prog *generic_xdp_prog;
@@ -1472,6 +1484,12 @@ static int rtnl_xdp_fill(struct sk_buff *skb, struct net_device *dev)
 		goto err_cancel;
 	err = rtnl_xdp_report_one(skb, dev, &prog_id, &mode, XDP_ATTACHED_HW,
 				  IFLA_XDP_HW_PROG_ID, rtnl_xdp_prog_hw);
+	if (err)
+		goto err_cancel;
+	err = rtnl_xdp_report_one(skb, dev, &prog_id, &mode,
+				  XDP_ATTACHED_EGRESS_CORE,
+				  IFLA_XDP_EGRESS_PROG_ID,
+				  rtnl_xdp_prog_egress);
 	if (err)
 		goto err_cancel;
 
@@ -2790,7 +2808,8 @@ static int do_setlink(const struct sk_buff *skb,
 		if (err < 0)
 			goto errout;
 
-		if (xdp[IFLA_XDP_ATTACHED] || xdp[IFLA_XDP_PROG_ID]) {
+		if (xdp[IFLA_XDP_ATTACHED] || xdp[IFLA_XDP_PROG_ID] ||
+		    xdp[IFLA_XDP_EGRESS_PROG_ID]) {
 			err = -EINVAL;
 			goto errout;
 		}
