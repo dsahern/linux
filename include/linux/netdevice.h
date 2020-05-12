@@ -752,6 +752,8 @@ struct netdev_rx_queue {
 #endif
 } ____cacheline_aligned_in_smp;
 
+extern struct static_key_false xdp_egress_needed_key;
+
 /*
  * RX queue sysfs structures and functions.
  */

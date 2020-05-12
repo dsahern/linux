@@ -4641,6 +4641,7 @@ void generic_xdp_tx(struct sk_buff *skb, struct bpf_prog *xdp_prog)
 }
 
 static DEFINE_STATIC_KEY_FALSE(generic_xdp_needed_key);
+DEFINE_STATIC_KEY_FALSE(xdp_egress_needed_key);
 
 int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff *skb)
 {
@@ -5336,12 +5337,12 @@ static void __netif_receive_skb_list(struct list_head *head)
 
 static int generic_xdp_install(struct net_device *dev, struct netdev_bpf *xdp)
 {
-	struct bpf_prog *old = rtnl_dereference(dev->xdp_prog);
-	struct bpf_prog *new = xdp->prog;
+	struct bpf_prog *old, *new = xdp->prog;
 	int ret = 0;
 
 	switch (xdp->command) {
 	case XDP_SETUP_PROG:
+		old = rtnl_dereference(dev->xdp_prog);
 		rcu_assign_pointer(dev->xdp_prog, new);
 		if (old)
 			bpf_prog_put(old);
@@ -5354,11 +5355,25 @@ static int generic_xdp_install(struct net_device *dev, struct netdev_bpf *xdp)
 			dev_disable_gro_hw(dev);
 		}
 		break;
+	case XDP_SETUP_PROG_EGRESS:
+		old = rtnl_dereference(dev->xdp_egress_prog);
+		rcu_assign_pointer(dev->xdp_egress_prog, new);
+		if (old)
+			bpf_prog_put(old);
 
+		if (old && !new)
+			static_branch_dec(&xdp_egress_needed_key);
+		else if (new && !old)
+			static_branch_inc(&xdp_egress_needed_key);
+		break;
 	case XDP_QUERY_PROG:
+		old = rtnl_dereference(dev->xdp_prog);
 		xdp->prog_id = old ? old->aux->id : 0;
 		break;
-
+	case XDP_QUERY_PROG_EGRESS:
+		old = rtnl_dereference(dev->xdp_egress_prog);
+		xdp->prog_id = old ? old->aux->id : 0;
+		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -8641,6 +8656,10 @@ static void dev_xdp_uninstall(struct net_device *dev)
 	/* Remove generic XDP */
 	WARN_ON(dev_xdp_install(dev, generic_xdp_install, NULL, 0, NULL));
 
+	/* Remove XDP egress */
+	WARN_ON(dev_xdp_install(dev, generic_xdp_install, NULL,
+				XDP_FLAGS_EGRESS_MODE, NULL));
+
 	/* Remove from the driver */
 	ndo_bpf = dev->netdev_ops->ndo_bpf;
 	if (!ndo_bpf)
@@ -8687,21 +8706,22 @@ int dev_change_xdp_fd(struct net_device *dev, struct netlink_ext_ack *extack,
 
 	offload = flags & XDP_FLAGS_HW_MODE;
 	egress = flags & XDP_FLAGS_EGRESS_MODE;
-	if (egress)
+	if (egress) {
 		query = XDP_QUERY_PROG_EGRESS;
-	else
+		bpf_op = bpf_chk = generic_xdp_install;
+	} else {
 		query = offload ? XDP_QUERY_PROG_HW : XDP_QUERY_PROG;
 
-
-	bpf_op = bpf_chk = ops->ndo_bpf;
-	if (!bpf_op && (flags & (XDP_FLAGS_DRV_MODE | XDP_FLAGS_HW_MODE))) {
-		NL_SET_ERR_MSG(extack, "underlying driver does not support XDP in native mode");
-		return -EOPNOTSUPP;
+		bpf_op = bpf_chk = ops->ndo_bpf;
+		if (!bpf_op && (flags & (XDP_FLAGS_DRV_MODE | XDP_FLAGS_HW_MODE))) {
+			NL_SET_ERR_MSG(extack, "underlying driver does not support XDP in native mode");
+			return -EOPNOTSUPP;
+		}
+		if (!bpf_op || (flags & XDP_FLAGS_SKB_MODE))
+			bpf_op = generic_xdp_install;
+		if (bpf_op == bpf_chk)
+			bpf_chk = generic_xdp_install;
 	}
-	if (!bpf_op || (flags & XDP_FLAGS_SKB_MODE))
-		bpf_op = generic_xdp_install;
-	if (bpf_op == bpf_chk)
-		bpf_chk = generic_xdp_install;
 
 	prog_id = __dev_xdp_query(dev, bpf_op, query);
 	if (flags & XDP_FLAGS_REPLACE) {
