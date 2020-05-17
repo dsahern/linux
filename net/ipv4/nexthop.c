@@ -588,34 +588,52 @@ struct nexthop *nexthop_select_path(struct nexthop *nh, int hash)
 }
 EXPORT_SYMBOL_GPL(nexthop_select_path);
 
-int nexthop_for_each_fib6_nh(struct nexthop *nh,
-			     int (*cb)(struct fib6_nh *nh, void *arg),
-			     void *arg)
+static int nexthop_fib6_nh_cb(struct nexthop *nh,
+			      int (*cb)(struct fib6_nh *nh, void *arg),
+			      void *arg)
 {
 	struct nh_info *nhi;
+
+	nhi = rcu_dereference_rtnl(nh->nh_info);
+
+	return cb(&nhi->fib6_nh, arg);
+}
+
+static int nexthop_fib6_nhg_cb(struct nh_group *nhg,
+			       int (*cb)(struct fib6_nh *nh, void *arg),
+			       void *arg)
+{
 	int err;
+	int i;
 
-	if (nh->is_group) {
-		struct nh_group *nhg;
-		int i;
+	for (i = 0; i < nhg->num_nh; i++) {
+		struct nh_grp_entry *nhge = &nhg->nh_entries[i];
+		struct nexthop *nh = nhge->nh;
 
-		nhg = rcu_dereference_rtnl(nh->nh_grp);
-		for (i = 0; i < nhg->num_nh; i++) {
-			struct nh_grp_entry *nhge = &nhg->nh_entries[i];
-
-			nhi = rcu_dereference_rtnl(nhge->nh->nh_info);
-			err = cb(&nhi->fib6_nh, arg);
-			if (err)
-				return err;
-		}
-	} else {
-		nhi = rcu_dereference_rtnl(nh->nh_info);
-		err = cb(&nhi->fib6_nh, arg);
+		err = nexthop_fib6_nh_cb(nh, cb, arg);
 		if (err)
 			return err;
 	}
 
 	return 0;
+}
+
+int nexthop_for_each_fib6_nh(struct nexthop *nh,
+			     int (*cb)(struct fib6_nh *nh, void *arg),
+			     void *arg)
+{
+	int err;
+
+	if (nh->is_group) {
+		struct nh_group *nhg;
+
+		nhg = rcu_dereference_rtnl(nh->nh_grp);
+		err = nexthop_fib6_nhg_cb(nhg, cb, arg);
+	} else {
+		err = nexthop_fib6_nh_cb(nh, cb, arg);
+	}
+
+	return err;
 }
 EXPORT_SYMBOL_GPL(nexthop_for_each_fib6_nh);
 
