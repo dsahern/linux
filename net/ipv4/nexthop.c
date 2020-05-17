@@ -684,7 +684,7 @@ static int nexthop_fib6_nh_cb(struct nexthop *nh,
 	return cb(&nhi->fib6_nh, arg);
 }
 
-static int nexthop_fib6_nhg_cb(struct nh_group *nhg,
+static int nexthop_fib6_nhg_cb(struct nh_group *nhg, bool primary_only,
 			       int (*cb)(struct fib6_nh *nh, void *arg),
 			       void *arg)
 {
@@ -703,7 +703,7 @@ static int nexthop_fib6_nhg_cb(struct nh_group *nhg,
 	return 0;
 }
 
-int nexthop_for_each_fib6_nh(struct nexthop *nh,
+int nexthop_for_each_fib6_nh(struct nexthop *nh, bool primary_only,
 			     int (*cb)(struct fib6_nh *nh, void *arg),
 			     void *arg)
 {
@@ -713,7 +713,7 @@ int nexthop_for_each_fib6_nh(struct nexthop *nh,
 		struct nh_group *nhg;
 
 		nhg = rcu_dereference_rtnl(nh->nh_grp);
-		err = nexthop_fib6_nhg_cb(nhg, cb, arg);
+		err = nexthop_fib6_nhg_cb(nhg, primary_only, cb, arg);
 	} else {
 		err = nexthop_fib6_nh_cb(nh, cb, arg);
 	}

@@ -1009,8 +1009,8 @@ static void fib6_drop_pcpu_from(struct fib6_info *f6i,
 			.table = table
 		};
 
-		nexthop_for_each_fib6_nh(f6i->nh, fib6_nh_drop_pcpu_from,
-					 &arg);
+		nexthop_for_each_fib6_nh(f6i->nh, false,
+					 fib6_nh_drop_pcpu_from, &arg);
 	} else {
 		struct fib6_nh *fib6_nh;
 

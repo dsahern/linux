@@ -526,7 +526,7 @@ static struct fib6_nh *rt6_nh_dev_match(struct net *net, struct nexthop *nh,
 	if (nexthop_is_blackhole(nh))
 		return NULL;
 
-	if (nexthop_for_each_fib6_nh(nh, __rt6_nh_dev_match, &arg))
+	if (nexthop_for_each_fib6_nh(nh, true, __rt6_nh_dev_match, &arg))
 		return arg.nh;
 
 	return NULL;
@@ -827,7 +827,8 @@ static void __find_rr_leaf(struct fib6_info *f6i_start,
 				res->nh = nexthop_fib6_nh(f6i->nh);
 				return;
 			}
-			if (nexthop_for_each_fib6_nh(f6i->nh, rt6_nh_find_match,
+			if (nexthop_for_each_fib6_nh(f6i->nh, true,
+						     rt6_nh_find_match,
 						     &arg)) {
 				matched = true;
 				nh = arg.nh;
@@ -1774,8 +1775,8 @@ static int rt6_nh_flush_exceptions(struct fib6_nh *nh, void *arg)
 void rt6_flush_exceptions(struct fib6_info *f6i)
 {
 	if (f6i->nh)
-		nexthop_for_each_fib6_nh(f6i->nh, rt6_nh_flush_exceptions,
-					 f6i);
+		nexthop_for_each_fib6_nh(f6i->nh, false,
+					 rt6_nh_flush_exceptions, f6i);
 	else
 		fib6_nh_flush_exceptions(f6i->fib6_nh, f6i);
 }
@@ -1897,7 +1898,7 @@ static int rt6_remove_exception_rt(struct rt6_info *rt)
 		int rc;
 
 		/* rc = 1 means an entry was found */
-		rc = nexthop_for_each_fib6_nh(from->nh,
+		rc = nexthop_for_each_fib6_nh(from->nh, false,
 					      rt6_nh_remove_exception_rt,
 					      &arg);
 		return rc ? 0 : -ENOENT;
@@ -1973,7 +1974,8 @@ static void rt6_update_exception_stamp_rt(struct rt6_info *rt)
 			.gw = &rt->rt6i_gateway,
 		};
 
-		nexthop_for_each_fib6_nh(from->nh, fib6_nh_find_match, &arg);
+		nexthop_for_each_fib6_nh(from->nh, false, fib6_nh_find_match,
+					 &arg);
 
 		if (!arg.match)
 			goto unlock;
@@ -2166,8 +2168,8 @@ void rt6_age_exceptions(struct fib6_info *f6i,
 			.now = now
 		};
 
-		nexthop_for_each_fib6_nh(f6i->nh, rt6_nh_age_exceptions,
-					 &arg);
+		nexthop_for_each_fib6_nh(f6i->nh, false,
+					 rt6_nh_age_exceptions, &arg);
 	} else {
 		fib6_nh_age_exceptions(f6i->fib6_nh, gc_args, now);
 	}
@@ -2768,7 +2770,7 @@ static void __ip6_rt_update_pmtu(struct dst_entry *dst, const struct sock *sk,
 				.gw = &rt6->rt6i_gateway,
 			};
 
-			nexthop_for_each_fib6_nh(res.f6i->nh,
+			nexthop_for_each_fib6_nh(res.f6i->nh, true,
 						 fib6_nh_find_match, &arg);
 
 			/* fib6_info uses a nexthop that does not have fib6_nh
@@ -2959,7 +2961,7 @@ restart:
 			if (nexthop_is_blackhole(rt->nh))
 				continue;
 			/* on match, res->nh is filled in and potentially ret */
-			if (nexthop_for_each_fib6_nh(rt->nh,
+			if (nexthop_for_each_fib6_nh(rt->nh, true,
 						     fib6_nh_redirect_match,
 						     &arg))
 				goto out;
@@ -3906,7 +3908,8 @@ static int ip6_del_cached_rt_nh(struct fib6_config *cfg, struct fib6_info *f6i)
 		.f6i = f6i
 	};
 
-	return nexthop_for_each_fib6_nh(f6i->nh, fib6_nh_del_cached_rt, &arg);
+	return nexthop_for_each_fib6_nh(f6i->nh, false,
+					fib6_nh_del_cached_rt, &arg);
 }
 
 static int ip6_route_del(struct fib6_config *cfg,
@@ -4096,7 +4099,7 @@ static void rt6_do_redirect(struct dst_entry *dst, struct sock *sk, struct sk_bu
 			.gw = &rt->rt6i_gateway,
 		};
 
-		nexthop_for_each_fib6_nh(res.f6i->nh,
+		nexthop_for_each_fib6_nh(res.f6i->nh, true,
 					 fib6_nh_find_match, &arg);
 
 		/* fib6_info uses a nexthop that does not have fib6_nh
@@ -4835,8 +4838,8 @@ static int rt6_mtu_change_route(struct fib6_info *f6i, void *p_arg)
 	arg->f6i = f6i;
 	if (f6i->nh) {
 		/* fib6_nh_mtu_change only returns 0, so this is safe */
-		return nexthop_for_each_fib6_nh(f6i->nh, fib6_nh_mtu_change,
-						arg);
+		return nexthop_for_each_fib6_nh(f6i->nh, false,
+						fib6_nh_mtu_change, arg);
 	}
 
 	return fib6_nh_mtu_change(f6i->fib6_nh, arg);
@@ -5381,7 +5384,7 @@ static size_t rt6_nlmsg_size(struct fib6_info *f6i)
 
 	if (f6i->nh) {
 		nexthop_len = nla_total_size(4); /* RTA_NH_ID */
-		nexthop_for_each_fib6_nh(f6i->nh, rt6_nh_nlmsg_size,
+		nexthop_for_each_fib6_nh(f6i->nh, false, rt6_nh_nlmsg_size,
 					 &nexthop_len);
 	} else {
 		struct fib6_nh *nh = f6i->fib6_nh;
@@ -5636,7 +5639,7 @@ static bool fib6_info_uses_dev(const struct fib6_info *f6i,
 	if (f6i->nh) {
 		struct net_device *_dev = (struct net_device *)dev;
 
-		return !!nexthop_for_each_fib6_nh(f6i->nh,
+		return !!nexthop_for_each_fib6_nh(f6i->nh, true,
 						  fib6_info_nh_uses_dev,
 						  _dev);
 	}
@@ -5769,7 +5772,7 @@ int rt6_dump_route(struct fib6_info *rt, void *p_arg, unsigned int skip)
 
 		rcu_read_lock();
 		if (rt->nh) {
-			err = nexthop_for_each_fib6_nh(rt->nh,
+			err = nexthop_for_each_fib6_nh(rt->nh, false,
 						       rt6_nh_dump_exceptions,
 						       &w);
 		} else {

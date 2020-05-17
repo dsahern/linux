@@ -346,7 +346,7 @@ static inline void nexthop_path_fib6_result(struct fib6_result *res, int hash)
 	}
 }
 
-int nexthop_for_each_fib6_nh(struct nexthop *nh,
+int nexthop_for_each_fib6_nh(struct nexthop *nh, bool primary_only,
 			     int (*cb)(struct fib6_nh *nh, void *arg),
 			     void *arg);
 
