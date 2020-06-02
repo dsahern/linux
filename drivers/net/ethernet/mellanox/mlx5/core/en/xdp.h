@@ -93,6 +93,7 @@ INDIRECT_CALLABLE_DECLARE(int mlx5e_xmit_xdp_frame_check(struct mlx5e_xdpsq *sq)
 struct mlx5_md_desc {
 	u32 flow_mark;
 	u32 hash32;
+	u16 vlan;
 };
 
 static inline void
@@ -104,6 +105,9 @@ mlx5e_xdp_set_data_meta(struct xdp_buff *xdp, struct mlx5_cqe64 *cqe)
 
 	md->flow_mark = be32_to_cpu(cqe->sop_drop_qpn) & MLX5E_TC_FLOW_ID_MASK;
 	md->hash32    = be32_to_cpu(cqe->rss_hash_result);
+
+	/* TODO Has vlan indication ? */
+	md->vlan      = be16_to_cpu(cqe->vlan_info);
 }
 
 static inline void mlx5e_xdp_tx_enable(struct mlx5e_priv *priv)
