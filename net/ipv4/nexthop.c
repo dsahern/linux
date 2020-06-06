@@ -536,6 +536,29 @@ static bool ipv4_good_nh(const struct fib_nh *nh)
 	return !!(state & NUD_VALID);
 }
 
+/* nexthops always check if it is good and does
+ * not rely on a sysctl for this behavior
+ */
+static bool good_nh(struct nexthop *nh)
+{
+	struct nh_info *nhi;
+	bool rc = false;
+
+	nhi = rcu_dereference(nh->nh_info);
+	switch (nhi->family) {
+	case AF_INET:
+		if (ipv4_good_nh(&nhi->fib_nh))
+			rc = true;
+		break;
+	case AF_INET6:
+		if (ipv6_good_nh(&nhi->fib6_nh))
+			rc = true;
+		break;
+	}
+
+	return rc;
+}
+
 struct nexthop *nexthop_select_path(struct nexthop *nh, int hash)
 {
 	struct nexthop *rc = NULL;
@@ -548,31 +571,17 @@ struct nexthop *nexthop_select_path(struct nexthop *nh, int hash)
 	nhg = rcu_dereference(nh->nh_grp);
 	for (i = 0; i < nhg->num_nh; ++i) {
 		struct nh_grp_entry *nhge = &nhg->nh_entries[i];
-		struct nh_info *nhi;
+		struct nexthop *nh;
 
 		if (hash > atomic_read(&nhge->upper_bound))
 			continue;
 
-		if (nhge->nh->is_fdb_nh)
-			return nhge->nh;
-
-		/* nexthops always check if it is good and does
-		 * not rely on a sysctl for this behavior
-		 */
-		nhi = rcu_dereference(nhge->nh->nh_info);
-		switch (nhi->family) {
-		case AF_INET:
-			if (ipv4_good_nh(&nhi->fib_nh))
-				return nhge->nh;
-			break;
-		case AF_INET6:
-			if (ipv6_good_nh(&nhi->fib6_nh))
-				return nhge->nh;
-			break;
-		}
+		nh = nhge->nh;
+		if (nh->is_fdb_nh || good_nh(nh))
+			return nh;
 
 		if (!rc)
-			rc = nhge->nh;
+			rc = nh;
 	}
 
 	return rc;
