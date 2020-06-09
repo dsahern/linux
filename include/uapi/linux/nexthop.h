@@ -22,6 +22,7 @@ struct nexthop_grp {
 
 enum {
 	NEXTHOP_GRP_TYPE_MPATH,  /* default type if not specified */
+	NEXTHOP_GRP_TYPE_ACTIVE_BACKUP,
 	__NEXTHOP_GRP_TYPE_MAX,
 };
 

@@ -76,6 +76,7 @@ struct nh_group {
 	struct nh_group		*spare; /* spare group for removals */
 	u16			num_nh;
 	bool			mpath;
+	bool			active_backup;
 	bool			has_v4;
 	struct nh_grp_entry	nh_entries[];
 };
@@ -158,6 +159,17 @@ static inline bool nexthop_is_multipath(const struct nexthop *nh)
 	return false;
 }
 
+static inline bool nexthop_is_active_backup(const struct nexthop *nh)
+{
+	if (nh->is_group) {
+		struct nh_group *nh_grp;
+
+		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
+		return nh_grp->active_backup;
+	}
+	return false;
+}
+
 struct nexthop *nexthop_select_path(struct nexthop *nh, int hash);
 
 static inline unsigned int nexthop_num_path(const struct nexthop *nh)
@@ -168,8 +180,7 @@ static inline unsigned int nexthop_num_path(const struct nexthop *nh)
 		struct nh_group *nh_grp;
 
 		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
-		if (nh_grp->mpath)
-			rc = nh_grp->num_nh;
+		rc = nh_grp->num_nh;
 	}
 
 	return rc;
@@ -196,9 +207,18 @@ int nexthop_mpath_fill_node(struct sk_buff *skb, struct nexthop *nh,
 
 	for (i = 0; i < nhg->num_nh; i++) {
 		struct nexthop *nhe = nhg->nh_entries[i].nh;
-		struct nh_info *nhi = rcu_dereference_rtnl(nhe->nh_info);
-		struct fib_nh_common *nhc = &nhi->fib_nhc;
 		int weight = nhg->nh_entries[i].weight;
+		struct fib_nh_common *nhc;
+		struct nh_info *nhi;
+
+		if (nhe->is_group) {
+			struct nh_group *nhg_ab = rtnl_dereference(nhe->nh_grp);
+
+			/* group in group is active-backup. take primary */
+			nhe = nhg_ab->nh_entries[0].nh;
+		}
+		nhi = rcu_dereference_rtnl(nhe->nh_info);
+		nhc = &nhi->fib_nhc;
 
 		if (fib_add_nexthop(skb, nhc, weight, rt_family) < 0)
 			return -EMSGSIZE;
@@ -216,7 +236,7 @@ static inline bool nexthop_is_blackhole(const struct nexthop *nh)
 		struct nh_group *nh_grp;
 
 		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
-		if (nh_grp->num_nh > 1)
+		if (nh_grp->active_backup || nh_grp->num_nh > 1)
 			return false;
 
 		nh = nh_grp->nh_entries[0].nh;
@@ -253,6 +273,16 @@ struct fib_nh_common *nexthop_fib_nhc(struct nexthop *nh, int nhsel)
 			nh = nexthop_mpath_select(nh_grp, nhsel);
 			if (!nh)
 				return NULL;
+
+			/* multipath with a-b path */
+			if (nh->is_group) {
+				nh_grp = rcu_dereference_rtnl(nh->nh_grp);
+				nh = nh_grp->nh_entries[0].nh;
+			}
+		} else if (nh_grp->active_backup) {
+			if (nhsel > 0)
+				return NULL;
+			nh = nh_grp->nh_entries[0].nh;
 		}
 	}
 
@@ -309,9 +339,13 @@ static inline struct fib6_nh *nexthop_fib6_nh(struct nexthop *nh)
 		struct nh_group *nh_grp;
 
 		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
-		nh = nexthop_mpath_select(nh_grp, 0);
-		if (!nh)
-			return NULL;
+		nh = nh_grp->nh_entries[0].nh;
+
+		/* mpath with active-backup path */
+		if (nh->is_group) {
+			nh_grp = rcu_dereference_rtnl(nh->nh_grp);
+			nh = nh_grp->nh_entries[0].nh;
+		}
 	}
 
 	nhi = rcu_dereference_rtnl(nh->nh_info);

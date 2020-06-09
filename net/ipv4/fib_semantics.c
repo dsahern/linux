@@ -480,10 +480,10 @@ static inline size_t fib_nlmsg_size(struct fib_info *fi)
 		nhsize += 2 * nla_total_size(4);
 
 		/* grab encap info */
-		for (i = 0; i < fib_info_num_path(fi); i++) {
+		for (i = 0; i < nhs; i++) {
 			struct fib_nh_common *nhc = fib_info_nhc(fi, i);
 
-			if (nhc->nhc_lwtstate) {
+			if (nhc && nhc->nhc_lwtstate) {
 				/* RTA_ENCAP_TYPE */
 				nh_encapsize += lwtunnel_get_encap_size(
 						nhc->nhc_lwtstate);
@@ -1780,6 +1780,8 @@ int fib_dump_info(struct sk_buff *skb, u32 portid, u32 seq, int event,
 			goto nla_put_failure;
 		if (nexthop_is_blackhole(fi->nh))
 			rtm->rtm_type = RTN_BLACKHOLE;
+		else if (nexthop_is_active_backup(fi->nh))
+			nhs = 1;
 		if (!fi->fib_net->ipv4.sysctl_nexthop_compat_mode)
 			goto offload;
 	}
