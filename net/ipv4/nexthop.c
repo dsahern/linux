@@ -588,6 +588,56 @@ struct nexthop *nexthop_select_path(struct nexthop *nh, int hash)
 }
 EXPORT_SYMBOL_GPL(nexthop_select_path);
 
+static struct fib_nh_common *nhc_lookup_single(const struct nexthop *nh,
+					       int fib_flags,
+					       const struct flowi4 *flp,
+					       int *nhsel)
+{
+	struct nh_info *nhi;
+
+	nhi = rcu_dereference(nh->nh_info);
+	if (fib_lookup_good_nhc(&nhi->fib_nhc, fib_flags, flp)) {
+		*nhsel = 0;
+		return &nhi->fib_nhc;
+	}
+	return NULL;
+}
+
+static struct fib_nh_common *nhc_lookup_mpath(const struct nh_group *nhg,
+					      int fib_flags,
+					      const struct flowi4 *flp,
+					      int *nhsel)
+{
+	struct fib_nh_common *nhc;
+	int i;
+
+	for (i = 0; i < nhg->num_nh; i++) {
+		struct nexthop *nhe = nhg->nh_entries[i].nh;
+
+		nhc = nhc_lookup_single(nhe, fib_flags, flp, nhsel);
+		if (nhc) {
+			*nhsel = i;
+			return nhc;
+		}
+	}
+
+	return NULL;
+}
+
+struct fib_nh_common *nexthop_get_nhc_lookup(const struct nexthop *nh,
+					     int fib_flags,
+					     const struct flowi4 *flp,
+					     int *nhsel)
+{
+	if (nh->is_group) {
+		const struct nh_group *nhg = rcu_dereference(nh->nh_grp);
+
+		return nhc_lookup_mpath(nhg, fib_flags, flp, nhsel);
+	}
+
+	return nhc_lookup_single(nh, fib_flags, flp, nhsel);
+}
+
 static int nexthop_fib6_nh_cb(struct nexthop *nh,
 			      int (*cb)(struct fib6_nh *nh, void *arg),
 			      void *arg)
