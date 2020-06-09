@@ -136,6 +136,17 @@ static inline bool nexthop_cmp(const struct nexthop *nh1,
 	return nh1 == nh2;
 }
 
+static inline bool nexthop_has_v4(const struct nexthop *nh)
+{
+	if (nh->is_group) {
+		struct nh_group *nh_grp;
+
+		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
+		return nh_grp->has_v4;
+	}
+	return false;
+}
+
 static inline bool nexthop_is_multipath(const struct nexthop *nh)
 {
 	if (nh->is_group) {
