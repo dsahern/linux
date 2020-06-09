@@ -266,30 +266,7 @@ struct fib_nh_common *nexthop_get_nhc_lookup(const struct nexthop *nh,
 					     const struct flowi4 *flp,
 					     int *nhsel);
 
-static inline bool nexthop_uses_dev(const struct nexthop *nh,
-				    const struct net_device *dev)
-{
-	struct nh_info *nhi;
-
-	if (nh->is_group) {
-		struct nh_group *nhg = rcu_dereference(nh->nh_grp);
-		int i;
-
-		for (i = 0; i < nhg->num_nh; i++) {
-			struct nexthop *nhe = nhg->nh_entries[i].nh;
-
-			nhi = rcu_dereference(nhe->nh_info);
-			if (nhc_l3mdev_matches_dev(&nhi->fib_nhc, dev))
-				return true;
-		}
-	} else {
-		nhi = rcu_dereference(nh->nh_info);
-		if (nhc_l3mdev_matches_dev(&nhi->fib_nhc, dev))
-			return true;
-	}
-
-	return false;
-}
+bool nexthop_uses_dev(const struct nexthop *nh, const struct net_device *dev);
 
 static inline unsigned int fib_info_num_path(const struct fib_info *fi)
 {

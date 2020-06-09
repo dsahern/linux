@@ -638,6 +638,41 @@ struct fib_nh_common *nexthop_get_nhc_lookup(const struct nexthop *nh,
 	return nhc_lookup_single(nh, fib_flags, flp, nhsel);
 }
 
+static bool nh_uses_dev_single(const struct nexthop *nh,
+			       const struct net_device *dev)
+{
+	const struct nh_info *nhi;
+
+	nhi = rcu_dereference(nh->nh_info);
+	return nhc_l3mdev_matches_dev(&nhi->fib_nhc, dev);
+}
+
+static bool nh_uses_dev_mpath(const struct nh_group *nhg,
+			      const struct net_device *dev)
+{
+	int i;
+
+	for (i = 0; i < nhg->num_nh; i++) {
+		struct nexthop *nhe = nhg->nh_entries[i].nh;
+
+		if (nh_uses_dev_single(nhe, dev))
+			return true;
+	}
+
+	return false;
+}
+
+bool nexthop_uses_dev(const struct nexthop *nh, const struct net_device *dev)
+{
+	if (nh->is_group) {
+		const struct nh_group *nhg = rcu_dereference(nh->nh_grp);
+
+		return nh_uses_dev_mpath(nhg, dev);
+	}
+
+	return nh_uses_dev_single(nh, dev);
+}
+
 static int nexthop_fib6_nh_cb(struct nexthop *nh,
 			      int (*cb)(struct fib6_nh *nh, void *arg),
 			      void *arg)
