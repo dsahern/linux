@@ -3320,6 +3320,16 @@ union bpf_attr {
  *		A non-negative value equal to or less than *size* on success,
  *		or a negative error in case of failure.
  *
+ * u64 bpf_ktime_get_fast_ns(void)
+ * 	Description
+ * 		Return time in nanoseconds using a fast, high resolution,
+ * 		nanosecond time source that is monotonic per cpu argument.
+ * 		Clock source is the same one used for perf events. Does
+ * 		not correlate to any clocks exposed by clock_gettime, and
+ * 		is not realiable across cpus. Useful when a delta time is
+ * 		needed in per-cpu context.
+ * 	Return
+ * 		Current *ktime*.
  */
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\
@@ -3464,6 +3474,7 @@ union bpf_attr {
 	FN(skc_to_tcp_request_sock),	\
 	FN(skc_to_udp6_sock),		\
 	FN(get_task_stack),		\
+	FN(ktime_get_fast_ns),		\
 	/* */
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper

@@ -155,6 +155,17 @@ const struct bpf_func_proto bpf_ktime_get_ns_proto = {
 	.ret_type	= RET_INTEGER,
 };
 
+BPF_CALL_0(bpf_ktime_get_fast_ns)
+{
+	return local_clock();
+}
+
+const struct bpf_func_proto bpf_ktime_get_fast_ns_proto = {
+	.func		= bpf_ktime_get_fast_ns,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+};
+
 BPF_CALL_0(bpf_ktime_get_boot_ns)
 {
 	/* NMI safe access to clock boottime */
@@ -633,6 +644,8 @@ bpf_base_func_proto(enum bpf_func_id func_id)
 		return &bpf_tail_call_proto;
 	case BPF_FUNC_ktime_get_ns:
 		return &bpf_ktime_get_ns_proto;
+	case BPF_FUNC_ktime_get_fast_ns:
+		return &bpf_ktime_get_fast_ns_proto;
 	case BPF_FUNC_ktime_get_boot_ns:
 		return &bpf_ktime_get_boot_ns_proto;
 	case BPF_FUNC_ringbuf_output:
