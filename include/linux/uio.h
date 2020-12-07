@@ -282,4 +282,6 @@ int iov_iter_for_each_range(struct iov_iter *i, size_t bytes,
 			    int (*f)(struct kvec *vec, void *context),
 			    void *context);
 
+extern struct static_key_false skip_copy_enabled;
+
 #endif

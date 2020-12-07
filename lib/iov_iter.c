@@ -15,6 +15,9 @@
 
 #define PIPE_PARANOIA /* for now */
 
+DEFINE_STATIC_KEY_FALSE(skip_copy_enabled);
+EXPORT_SYMBOL_GPL(skip_copy_enabled);
+
 #define iterate_iovec(i, n, __v, __p, skip, STEP) {	\
 	size_t left;					\
 	size_t wanted = n;				\
@@ -476,7 +479,13 @@ static void memcpy_from_page(char *to, struct page *page, size_t offset, size_t 
 static void memcpy_to_page(struct page *page, size_t offset, const char *from, size_t len)
 {
 	char *to = kmap_atomic(page);
-	memcpy(to + offset, from, len);
+
+	if (static_branch_unlikely(&skip_copy_enabled)) {
+		if (to + offset != from)
+			memcpy(to + offset, from, len);
+	} else {
+		memcpy(to + offset, from, len);
+	}
 	kunmap_atomic(to);
 }
 
