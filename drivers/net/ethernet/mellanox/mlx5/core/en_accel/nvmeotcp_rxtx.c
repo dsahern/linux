@@ -175,6 +175,20 @@ mlx5e_nvmeotcp_handle_rx_skb(struct net_device *netdev, struct sk_buff *skb,
 		return skb;
 	}
 
+#ifdef CONFIG_TCP_DDP_CRC
+	/* If a resync occurred in the previous cqe,
+	 * the current cqe.crcvalid bit may not be valid,
+	 * so we will treat it as 0
+	 */
+	skb->ddp_crc = queue->after_resync_cqe ? 0 :
+		cqe_is_nvmeotcp_crcvalid(cqe);
+	queue->after_resync_cqe = 0;
+#endif
+	if (!cqe_is_nvmeotcp_zc(cqe)) {
+		mlx5e_nvmeotcp_put_queue(queue);
+		return skb;
+	}
+
 	stats = priv->channels.c[queue->channel_ix]->rq.stats;
 
 	/* cc ddp from cqe */

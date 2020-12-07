@@ -844,6 +844,7 @@ mlx5e_nvmeotcp_dev_resync(struct net_device *netdev,
 	struct mlx5e_nvmeotcp_queue *queue =
 				(struct mlx5e_nvmeotcp_queue *)tcp_ddp_get_ctx(sk);
 
+	queue->after_resync_cqe = 1;
 	mlx5e_nvmeotcp_rx_post_static_params_wqe(queue, seq);
 }
 

@@ -50,6 +50,7 @@ struct mlx5e_nvmeotcp_sq {
  *	@ccoff_inner: Current offset within the @ccsglidx element
  *	@priv: mlx5e netdev priv
  *	@inv_done: invalidate callback of the nvme tcp driver
+ *	@after_resync_cqe: indicate if resync occurred
  */
 struct mlx5e_nvmeotcp_queue {
 	struct tcp_ddp_ctx		tcp_ddp_ctx;
@@ -82,6 +83,8 @@ struct mlx5e_nvmeotcp_queue {
 
 	/* for flow_steering flow */
 	struct completion		done;
+	/* for MASK HW resync cqe */
+	bool				after_resync_cqe;
 };
 
 struct mlx5e_nvmeotcp {

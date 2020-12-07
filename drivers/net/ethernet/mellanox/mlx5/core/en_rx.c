@@ -1079,10 +1079,6 @@ static inline void mlx5e_build_rx_skb(struct mlx5_cqe64 *cqe,
 	if (unlikely(mlx5_ipsec_is_rx_flow(cqe)))
 		mlx5e_ipsec_offload_handle_rx_skb(netdev, skb, cqe);
 
-#if defined(CONFIG_TCP_DDP_CRC) && defined(CONFIG_MLX5_EN_NVMEOTCP)
-	skb->ddp_crc = cqe_is_nvmeotcp_crcvalid(cqe);
-#endif
-
 	if (lro_num_seg > 1) {
 		mlx5e_lro_update_hdr(skb, cqe, cqe_bcnt);
 		skb_shinfo(skb)->gso_size = DIV_ROUND_UP(cqe_bcnt, lro_num_seg);
@@ -1197,7 +1193,7 @@ mlx5e_skb_from_cqe_linear(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe,
 	page_ref_inc(di->page);
 
 #if defined(CONFIG_TCP_DDP) && defined(CONFIG_MLX5_EN_NVMEOTCP)
-	if (cqe_is_nvmeotcp_zc_or_resync(cqe))
+	if (cqe_is_nvmeotcp(cqe))
 		skb = mlx5e_nvmeotcp_handle_rx_skb(rq->netdev, skb, cqe,
 						   cqe_bcnt, true);
 #endif
@@ -1253,7 +1249,7 @@ mlx5e_skb_from_cqe_nonlinear(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe,
 	skb->len  += headlen;
 
 #if defined(CONFIG_TCP_DDP) && defined(CONFIG_MLX5_EN_NVMEOTCP)
-	if (cqe_is_nvmeotcp_zc_or_resync(cqe))
+	if (cqe_is_nvmeotcp(cqe))
 		skb = mlx5e_nvmeotcp_handle_rx_skb(rq->netdev, skb, cqe,
 						   cqe_bcnt, false);
 #endif
@@ -1485,7 +1481,7 @@ mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *w
 	skb->len  += headlen;
 
 #if defined(CONFIG_TCP_DDP) && defined(CONFIG_MLX5_EN_NVMEOTCP)
-	if (cqe_is_nvmeotcp_zc_or_resync(cqe))
+	if (cqe_is_nvmeotcp(cqe))
 		skb = mlx5e_nvmeotcp_handle_rx_skb(rq->netdev, skb, cqe,
 						   cqe_bcnt, false);
 #endif
@@ -1538,7 +1534,7 @@ mlx5e_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
 	page_ref_inc(di->page);
 
 #if defined(CONFIG_TCP_DDP) && defined(CONFIG_MLX5_EN_NVMEOTCP)
-	if (cqe_is_nvmeotcp_zc_or_resync(cqe))
+	if (cqe_is_nvmeotcp(cqe))
 		skb = mlx5e_nvmeotcp_handle_rx_skb(rq->netdev, skb, cqe,
 						   cqe_bcnt, true);
 #endif

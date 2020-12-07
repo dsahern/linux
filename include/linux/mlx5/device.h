@@ -878,9 +878,9 @@ static inline bool cqe_is_nvmeotcp_zc(struct mlx5_cqe64 *cqe)
 	return ((cqe->nvmetcp >> 4) & 0x1);
 }
 
-static inline bool cqe_is_nvmeotcp_zc_or_resync(struct mlx5_cqe64 *cqe)
+static inline bool cqe_is_nvmeotcp(struct mlx5_cqe64 *cqe)
 {
-	return ((cqe->nvmetcp >> 4) & 0x5);
+	return ((cqe->nvmetcp >> 4) & 0x7);
 }
 
 static inline u8 mlx5_get_cqe_format(struct mlx5_cqe64 *cqe)
