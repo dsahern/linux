@@ -457,6 +457,15 @@ config ETHTOOL_NETLINK
 	  netlink. It provides better extensibility and some new features,
 	  e.g. notification messages.
 
+config TCP_DDP
+	bool "TCP direct data placement offload"
+	default n
+	help
+	  Direct Data Placement (DDP) offload for TCP enables ULP, such as
+	  NVMe-TCP/iSCSI, to request the NIC to place TCP payload data
+	  of a command response directly into kernel pages.
+
+
 endif   # if NET
 
 # Used by archs to tell that they support BPF JIT compiler plus which flavour.
