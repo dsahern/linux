@@ -684,6 +684,7 @@ typedef unsigned char *sk_buff_data_t;
  *		CHECKSUM_UNNECESSARY (max 3)
  *	@dst_pending_confirm: need to confirm neighbour
  *	@decrypted: Decrypted SKB
+ *	@ddp_crc: NIC is responsible for PDU's CRC computation and verification
  *	@napi_id: id of the NAPI struct this skb came from
  *	@sender_cpu: (aka @napi_id) source CPU in XPS
  *	@secmark: security marking
@@ -860,6 +861,10 @@ struct sk_buff {
 #ifdef CONFIG_TLS_DEVICE
 	__u8			decrypted:1;
 #endif
+#ifdef CONFIG_TCP_DDP_CRC
+	__u8                    ddp_crc:1;
+#endif
+
 
 #ifdef CONFIG_NET_SCHED
 	__u16			tc_index;	/* traffic control index */
