@@ -473,6 +473,16 @@ static void memcpy_from_page(char *to, struct page *page, size_t offset, size_t 
 	kunmap_atomic(from);
 }
 
+static void ddp_memcpy_to_page(struct page *page, size_t offset, const char *from, size_t len)
+{
+	char *to = kmap_atomic(page);
+
+	if (to + offset != from)
+		memcpy(to + offset, from, len);
+
+	kunmap_atomic(to);
+}
+
 static void memcpy_to_page(struct page *page, size_t offset, const char *from, size_t len)
 {
 	char *to = kmap_atomic(page);
@@ -624,6 +634,22 @@ static size_t csum_and_copy_to_pipe_iter(const void *addr, size_t bytes,
 	*csum = sum;
 	return bytes;
 }
+
+size_t _ddp_copy_to_iter(const void *addr, size_t bytes, struct iov_iter *i)
+{
+	const char *from = addr;
+	if (unlikely(iov_iter_is_pipe(i)))
+		return copy_pipe_to_iter(addr, bytes, i);
+	if (iter_is_iovec(i))
+		might_fault();
+	iterate_and_advance(i, bytes, v, NULL,
+		ddp_memcpy_to_page(v.bv_page, v.bv_offset,
+				   (from += v.bv_len) - v.bv_len, v.bv_len),
+		NULL)
+
+	return bytes;
+}
+EXPORT_SYMBOL(_ddp_copy_to_iter);
 
 size_t _copy_to_iter(const void *addr, size_t bytes, struct iov_iter *i)
 {
@@ -1565,6 +1591,25 @@ size_t csum_and_copy_to_iter(const void *addr, size_t bytes, void *csump,
 	return bytes;
 }
 EXPORT_SYMBOL(csum_and_copy_to_iter);
+
+size_t ddp_hash_and_copy_to_iter(const void *addr, size_t bytes, void *hashp,
+		struct iov_iter *i)
+{
+#ifdef CONFIG_CRYPTO_HASH
+	struct ahash_request *hash = hashp;
+	struct scatterlist sg;
+	size_t copied;
+
+	copied = ddp_copy_to_iter(addr, bytes, i);
+	sg_init_one(&sg, addr, copied);
+	ahash_request_set_crypt(hash, &sg, NULL, copied);
+	crypto_ahash_update(hash);
+	return copied;
+#else
+	return 0;
+#endif
+}
+EXPORT_SYMBOL(ddp_hash_and_copy_to_iter);
 
 size_t hash_and_copy_to_iter(const void *addr, size_t bytes, void *hashp,
 		struct iov_iter *i)
