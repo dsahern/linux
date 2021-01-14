@@ -47,6 +47,7 @@
 #include "fpga/ipsec.h"
 #include "en_accel/ipsec_rxtx.h"
 #include "en_accel/tls_rxtx.h"
+#include "en_accel/nvmeotcp.h"
 #include "lib/clock.h"
 #include "en/xdp.h"
 #include "en/xsk/rx.h"
@@ -628,6 +629,9 @@ void mlx5e_free_icosq_descs(struct mlx5e_icosq *sq)
 #ifdef CONFIG_MLX5_EN_NVMEOTCP
 		case MLX5E_ICOSQ_WQE_UMR_NVME_TCP:
 			break;
+		case MLX5E_ICOSQ_WQE_SET_PSV_NVME_TCP:
+			mlx5e_nvmeotcp_ctx_comp(wi);
+			break;
 #endif
 		}
 	}
@@ -701,6 +705,9 @@ int mlx5e_poll_ico_cq(struct mlx5e_cq *cq)
 #endif
 #ifdef CONFIG_MLX5_EN_NVMEOTCP
 			case MLX5E_ICOSQ_WQE_UMR_NVME_TCP:
+				break;
+			case MLX5E_ICOSQ_WQE_SET_PSV_NVME_TCP:
+				mlx5e_nvmeotcp_ctx_comp(wi);
 				break;
 #endif
 			default:
