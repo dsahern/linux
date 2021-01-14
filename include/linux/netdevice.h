@@ -940,6 +940,7 @@ struct dev_ifalias {
 
 struct devlink;
 struct tlsdev_ops;
+struct tcp_ddp_dev_ops;
 
 struct netdev_name_node {
 	struct hlist_node hlist;
@@ -1917,6 +1918,10 @@ struct net_device {
 
 #if IS_ENABLED(CONFIG_TLS_DEVICE)
 	const struct tlsdev_ops *tlsdev_ops;
+#endif
+
+#ifdef CONFIG_TCP_DDP
+	const struct tcp_ddp_dev_ops *tcp_ddp_ops;
 #endif
 
 	const struct header_ops *header_ops;

@@ -69,6 +69,7 @@
 #include <net/xfrm.h>
 #include <net/mpls.h>
 #include <net/mptcp.h>
+#include <net/tcp_ddp.h>
 
 #include <linux/uaccess.h>
 #include <trace/events/skb.h>
@@ -6137,9 +6138,15 @@ EXPORT_SYMBOL(pskb_extract);
  */
 void skb_condense(struct sk_buff *skb)
 {
+	bool is_ddp = false;
+
+#ifdef CONFIG_TCP_DDP
+	is_ddp = skb->sk && inet_csk(skb->sk) &&
+		 inet_csk(skb->sk)->icsk_ulp_ddp_data;
+#endif
 	if (skb->data_len) {
 		if (skb->data_len > skb->end - skb->tail ||
-		    skb_cloned(skb))
+		    skb_cloned(skb) || is_ddp)
 			return;
 
 		/* Nice, we can free page frag(s) right now */
