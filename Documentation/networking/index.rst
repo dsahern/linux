@@ -99,6 +99,7 @@ Contents:
    sysfs-tagging
    tc-actions-env-rules
    tcp-thin
+   tcp-ddp-offload
    team
    timestamping
    tipc
