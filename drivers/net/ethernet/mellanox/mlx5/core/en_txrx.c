@@ -36,6 +36,7 @@
 #include "en/xdp.h"
 #include "en/xsk/rx.h"
 #include "en/xsk/tx.h"
+#include "en_accel/nvmeotcp.h"
 
 static inline bool mlx5e_channel_no_affinity_change(struct mlx5e_channel *c)
 {
@@ -117,6 +118,10 @@ int mlx5e_napi_poll(struct napi_struct *napi, int budget)
 	struct mlx5e_xdpsq *xsksq = &c->xsksq;
 	struct mlx5e_rq *xskrq = &c->xskrq;
 	struct mlx5e_rq *rq = &c->rq;
+#ifdef CONFIG_MLX5_EN_NVMEOTCP
+	struct mlx5e_nvmeotcp_sq *nvmeotcp_sq;
+	struct list_head *cur;
+#endif
 	bool aff_change = false;
 	bool busy_xsk = false;
 	bool busy = false;
@@ -154,6 +159,12 @@ int mlx5e_napi_poll(struct napi_struct *napi, int budget)
 		 * queueing more WQEs and overflowing the async ICOSQ.
 		 */
 		clear_bit(MLX5E_SQ_STATE_PENDING_XSK_TX, &c->async_icosq.state);
+#ifdef CONFIG_MLX5_EN_NVMEOTCP
+	list_for_each(cur, &c->list_nvmeotcpsq) {
+		nvmeotcp_sq = list_entry(cur, struct mlx5e_nvmeotcp_sq, list);
+		mlx5e_poll_ico_cq(&nvmeotcp_sq->icosq.cq);
+	}
+#endif
 
 	busy |= INDIRECT_CALL_2(rq->post_wqes,
 				mlx5e_post_rx_mpwqes,
@@ -192,6 +203,12 @@ int mlx5e_napi_poll(struct napi_struct *napi, int budget)
 	mlx5e_cq_arm(&rq->cq);
 	mlx5e_cq_arm(&c->icosq.cq);
 	mlx5e_cq_arm(&c->async_icosq.cq);
+#ifdef CONFIG_MLX5_EN_NVMEOTCP
+	list_for_each(cur, &c->list_nvmeotcpsq) {
+		nvmeotcp_sq = list_entry(cur, struct mlx5e_nvmeotcp_sq, list);
+		mlx5e_cq_arm(&nvmeotcp_sq->icosq.cq);
+	}
+#endif
 	mlx5e_cq_arm(&c->xdpsq.cq);
 
 	if (xsk_open) {

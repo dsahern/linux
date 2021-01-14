@@ -47,6 +47,7 @@
 #include "en_accel/ipsec.h"
 #include "en_accel/en_accel.h"
 #include "en_accel/tls.h"
+#include "en_accel/nvmeotcp.h"
 #include "accel/ipsec.h"
 #include "accel/tls.h"
 #include "lib/vxlan.h"
@@ -1990,6 +1991,10 @@ static int mlx5e_open_channel(struct mlx5e_priv *priv, int ix,
 	c->aff_mask = irq_get_effective_affinity_mask(irq);
 	c->lag_port = mlx5e_enumerate_lag_port(priv->mdev, ix);
 
+#ifdef CONFIG_MLX5_EN_NVMEOTCP
+	INIT_LIST_HEAD(&c->list_nvmeotcpsq);
+	spin_lock_init(&c->nvmeotcp_icosq_lock);
+#endif
 	netif_napi_add(netdev, &c->napi, mlx5e_napi_poll, 64);
 
 	err = mlx5e_open_queues(c, params, cparam);
@@ -2222,7 +2227,8 @@ static void mlx5e_build_common_cq_param(struct mlx5e_priv *priv,
 	void *cqc = param->cqc;
 
 	MLX5_SET(cqc, cqc, uar_page, priv->mdev->priv.uar->index);
-	if (MLX5_CAP_GEN(priv->mdev, cqe_128_always) && cache_line_size() >= 128)
+	if (MLX5_CAP_GEN(priv->mdev, cqe_128_always) &&
+	    (cache_line_size() >= 128 || param->force_cqe128))
 		MLX5_SET(cqc, cqc, cqe_sz, CQE_STRIDE_128_PAD);
 }
 
@@ -2235,6 +2241,11 @@ void mlx5e_build_rx_cq_param(struct mlx5e_priv *priv,
 	bool hw_stridx = false;
 	void *cqc = param->cqc;
 	u8 log_cq_size;
+
+#ifdef CONFIG_MLX5_EN_NVMEOTCP
+	/* nvme-tcp offload mandates 128 byte cqes */
+	param->force_cqe128 |= (priv->nvmeotcp->enable || priv->nvmeotcp->crc_rx_enable);
+#endif
 
 	switch (params->rq_wq_type) {
 	case MLX5_WQ_TYPE_LINKED_LIST_STRIDING_RQ:
@@ -3932,6 +3943,10 @@ int mlx5e_set_features(struct net_device *netdev, netdev_features_t features)
 	err |= MLX5E_HANDLE_FEATURE(NETIF_F_NTUPLE, set_feature_arfs);
 #endif
 	err |= MLX5E_HANDLE_FEATURE(NETIF_F_HW_TLS_RX, mlx5e_ktls_set_feature_rx);
+#ifdef CONFIG_MLX5_EN_NVMEOTCP
+	err |= MLX5E_HANDLE_FEATURE(NETIF_F_HW_TCP_DDP, set_feature_nvme_tcp);
+	err |= MLX5E_HANDLE_FEATURE(NETIF_F_HW_TCP_DDP_CRC_RX, set_feature_nvme_tcp_crc);
+#endif
 
 	if (err) {
 		netdev->features = oper_features;
@@ -3968,6 +3983,23 @@ static netdev_features_t mlx5e_fix_features(struct net_device *netdev,
 		features &= ~NETIF_F_RXHASH;
 		if (netdev->features & NETIF_F_RXHASH)
 			netdev_warn(netdev, "Disabling rxhash, not supported when CQE compress is active\n");
+
+		features &= ~NETIF_F_HW_TCP_DDP;
+		if (netdev->features & NETIF_F_HW_TCP_DDP)
+			netdev_warn(netdev, "Disabling tcp-ddp offload, not supported when CQE compress is active\n");
+
+		features &= ~NETIF_F_HW_TCP_DDP_CRC_RX;
+		if (netdev->features & NETIF_F_HW_TCP_DDP_CRC_RX)
+			netdev_warn(netdev, "Disabling tcp-ddp-crc-rx offload, not supported when CQE compression is active\n");
+	}
+
+	if (netdev->features & NETIF_F_LRO) {
+		features &= ~NETIF_F_HW_TCP_DDP;
+		if (netdev->features & NETIF_F_HW_TCP_DDP)
+			netdev_warn(netdev, "Disabling tcp-ddp offload, not supported when LRO is active\n");
+		features &= ~NETIF_F_HW_TCP_DDP_CRC_RX;
+		if (netdev->features & NETIF_F_HW_TCP_DDP_CRC_RX)
+			netdev_warn(netdev, "Disabling tcp-ddp-crc-rx offload, not supported when LRO is active\n");
 	}
 
 	mutex_unlock(&priv->state_lock);
@@ -5037,6 +5069,7 @@ static void mlx5e_build_nic_netdev(struct net_device *netdev)
 	mlx5e_set_netdev_dev_addr(netdev);
 	mlx5e_ipsec_build_netdev(priv);
 	mlx5e_tls_build_netdev(priv);
+	mlx5e_nvmeotcp_build_netdev(priv);
 }
 
 void mlx5e_create_q_counters(struct mlx5e_priv *priv)
@@ -5101,6 +5134,9 @@ static int mlx5e_nic_init(struct mlx5_core_dev *mdev,
 	err = mlx5e_tls_init(priv);
 	if (err)
 		mlx5_core_err(mdev, "TLS initialization failed, %d\n", err);
+	err = mlx5e_nvmeotcp_init(priv);
+	if (err)
+		mlx5_core_err(mdev, "NVMEoTCP initialization failed, %d\n", err);
 	mlx5e_build_nic_netdev(netdev);
 	err = mlx5e_devlink_port_register(priv);
 	if (err)
@@ -5114,6 +5150,7 @@ static void mlx5e_nic_cleanup(struct mlx5e_priv *priv)
 {
 	mlx5e_health_destroy_reporters(priv);
 	mlx5e_devlink_port_unregister(priv);
+	mlx5e_nvmeotcp_cleanup(priv);
 	mlx5e_tls_cleanup(priv);
 	mlx5e_ipsec_cleanup(priv);
 	mlx5e_netdev_cleanup(priv->netdev, priv);

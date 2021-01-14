@@ -203,3 +203,14 @@ config MLX5_SW_STEERING
 	default y
 	help
 	Build support for software-managed steering in the NIC.
+
+config MLX5_EN_NVMEOTCP
+       bool "NVMEoTCP accelaration"
+       depends on MLX5_CORE_EN
+       depends on TCP_DDP
+       depends on TCP_DDP_CRC
+       default y
+       help
+       Build support for NVMEoTCP accelaration in the NIC.
+       Note: Support for hardware with this capability needs to be selected
+       for this option to become available.
