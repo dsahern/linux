@@ -119,6 +119,57 @@ static void skb_under_panic(struct sk_buff *skb, unsigned int sz, void *addr)
 	skb_panic(skb, sz, addr, __func__);
 }
 
+#define NAPI_SKB_CACHE_SIZE	64
+
+struct napi_alloc_cache {
+	struct page_frag_cache page;
+	unsigned int skb_count;
+	void *skb_cache[NAPI_SKB_CACHE_SIZE];
+};
+
+static DEFINE_PER_CPU(struct page_frag_cache, netdev_alloc_cache);
+static DEFINE_PER_CPU(struct napi_alloc_cache, napi_alloc_cache);
+
+static void *__napi_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
+{
+	struct napi_alloc_cache *nc = this_cpu_ptr(&napi_alloc_cache);
+
+	return page_frag_alloc(&nc->page, fragsz, gfp_mask);
+}
+
+void *napi_alloc_frag(unsigned int fragsz)
+{
+	fragsz = SKB_DATA_ALIGN(fragsz);
+
+	return __napi_alloc_frag(fragsz, GFP_ATOMIC);
+}
+EXPORT_SYMBOL(napi_alloc_frag);
+
+/**
+ * netdev_alloc_frag - allocate a page fragment
+ * @fragsz: fragment size
+ *
+ * Allocates a frag from a page for receive buffer.
+ * Uses GFP_ATOMIC allocations.
+ */
+void *netdev_alloc_frag(unsigned int fragsz)
+{
+	struct page_frag_cache *nc;
+	void *data;
+
+	fragsz = SKB_DATA_ALIGN(fragsz);
+	if (in_irq() || irqs_disabled()) {
+		nc = this_cpu_ptr(&netdev_alloc_cache);
+		data = page_frag_alloc(nc, fragsz, GFP_ATOMIC);
+	} else {
+		local_bh_disable();
+		data = __napi_alloc_frag(fragsz, GFP_ATOMIC);
+		local_bh_enable();
+	}
+	return data;
+}
+EXPORT_SYMBOL(netdev_alloc_frag);
+
 /* Caller must provide SKB that is memset cleared */
 static void __build_skb_around(struct sk_buff *skb, void *data,
 			       unsigned int frag_size)
@@ -217,57 +268,6 @@ struct sk_buff *build_skb_around(struct sk_buff *skb,
 	return skb;
 }
 EXPORT_SYMBOL(build_skb_around);
-
-#define NAPI_SKB_CACHE_SIZE	64
-
-struct napi_alloc_cache {
-	struct page_frag_cache page;
-	unsigned int skb_count;
-	void *skb_cache[NAPI_SKB_CACHE_SIZE];
-};
-
-static DEFINE_PER_CPU(struct page_frag_cache, netdev_alloc_cache);
-static DEFINE_PER_CPU(struct napi_alloc_cache, napi_alloc_cache);
-
-static void *__napi_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
-{
-	struct napi_alloc_cache *nc = this_cpu_ptr(&napi_alloc_cache);
-
-	return page_frag_alloc(&nc->page, fragsz, gfp_mask);
-}
-
-void *napi_alloc_frag(unsigned int fragsz)
-{
-	fragsz = SKB_DATA_ALIGN(fragsz);
-
-	return __napi_alloc_frag(fragsz, GFP_ATOMIC);
-}
-EXPORT_SYMBOL(napi_alloc_frag);
-
-/**
- * netdev_alloc_frag - allocate a page fragment
- * @fragsz: fragment size
- *
- * Allocates a frag from a page for receive buffer.
- * Uses GFP_ATOMIC allocations.
- */
-void *netdev_alloc_frag(unsigned int fragsz)
-{
-	struct page_frag_cache *nc;
-	void *data;
-
-	fragsz = SKB_DATA_ALIGN(fragsz);
-	if (in_irq() || irqs_disabled()) {
-		nc = this_cpu_ptr(&netdev_alloc_cache);
-		data = page_frag_alloc(nc, fragsz, GFP_ATOMIC);
-	} else {
-		local_bh_disable();
-		data = __napi_alloc_frag(fragsz, GFP_ATOMIC);
-		local_bh_enable();
-	}
-	return data;
-}
-EXPORT_SYMBOL(netdev_alloc_frag);
 
 /*
  * kmalloc_reserve is a wrapper around kmalloc_node_track_caller that tells
