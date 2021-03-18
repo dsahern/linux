@@ -1152,6 +1152,10 @@ mlx5e_skb_from_cqe_linear(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe,
 	net_prefetch(data);
 
 	mlx5e_fill_xdp_buff(rq, va, rx_headroom, cqe_bcnt, &xdp);
+	if (likely((cqe->hds_ip_ext & CQE_L3_OK) &&
+		   (cqe->hds_ip_ext & CQE_L4_OK)))
+		xdp.ip_summed = CHECKSUM_UNNECESSARY;
+
 	if (mlx5e_xdp_handle(rq, di, &cqe_bcnt, &xdp))
 		return NULL; /* page/packet was consumed by XDP */
 
@@ -1470,6 +1474,9 @@ mlx5e_skb_from_cqe_mpwrq_linear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi,
 	net_prefetch(data);
 
 	mlx5e_fill_xdp_buff(rq, va, rx_headroom, cqe_bcnt32, &xdp);
+	//if (likely((cqe->hds_ip_ext & CQE_L3_OK) &&
+	//	   (cqe->hds_ip_ext & CQE_L4_OK)))
+		xdp.ip_summed = CHECKSUM_UNNECESSARY;
 	if (mlx5e_xdp_handle(rq, di, &cqe_bcnt32, &xdp)) {
 		if (__test_and_clear_bit(MLX5E_RQ_FLAG_XDP_XMIT, rq->flags))
 			__set_bit(page_idx, wi->xdp_xmit_bitmap); /* non-atomic */

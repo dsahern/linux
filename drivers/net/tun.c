@@ -1987,6 +1987,10 @@ static ssize_t tun_put_user_xdp(struct tun_struct *tun,
 		vnet_hdr_sz = READ_ONCE(tun->vnet_hdr_sz);
 		if (unlikely(iov_iter_count(iter) < vnet_hdr_sz))
 			return -EINVAL;
+
+		if (xdp_frame->ip_summed == CHECKSUM_UNNECESSARY)
+			gso.flags = VIRTIO_NET_HDR_F_DATA_VALID;
+
 		if (unlikely(copy_to_iter(&gso, sizeof(gso), iter) !=
 			     sizeof(gso)))
 			return -EFAULT;

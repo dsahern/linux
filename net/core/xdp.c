@@ -497,6 +497,7 @@ struct sk_buff *__xdp_build_skb_from_frame(struct xdp_frame *xdpf,
 
 	/* Essential SKB info: protocol and skb->dev */
 	skb->protocol = eth_type_trans(skb, dev);
+	skb->ip_summed = xdpf->ip_summed;
 
 	/* Optional SKB info, currently missing:
 	 * - HW checksum info		(skb->ip_summed)
