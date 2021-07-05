@@ -21,6 +21,8 @@
 #define AF_INET 2
 #define AF_INET6 10
 
+volatile const __u32 FWMARK;
+
 static __always_inline int fill_fib_params_v4(struct __sk_buff *skb,
 					      struct bpf_fib_lookup *fib_params)
 {
@@ -40,6 +42,7 @@ static __always_inline int fill_fib_params_v4(struct __sk_buff *skb,
 	fib_params->l4_protocol = ip4h->protocol;
 	fib_params->sport = 0;
 	fib_params->dport = 0;
+	fib_params->mark = FWMARK;
 	fib_params->tot_len = bpf_ntohs(ip4h->tot_len);
 	fib_params->ipv4_src = ip4h->saddr;
 	fib_params->ipv4_dst = ip4h->daddr;
@@ -68,6 +71,7 @@ static __always_inline int fill_fib_params_v6(struct __sk_buff *skb,
 	fib_params->l4_protocol = ip6h->nexthdr;
 	fib_params->sport = 0;
 	fib_params->dport = 0;
+	fib_params->mark = FWMARK;
 	fib_params->tot_len = bpf_ntohs(ip6h->payload_len);
 	*src = ip6h->saddr;
 	*dst = ip6h->daddr;

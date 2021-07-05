@@ -52,6 +52,8 @@
 #define MAC_DST_FWD "00:11:22:33:44:55"
 #define MAC_DST "00:22:33:44:55:66"
 
+#define FWMARK  10
+
 #define IFADDR_STR_LEN 18
 #define PING_ARGS "-i 0.2 -c 3 -w 10 -q"
 
@@ -435,6 +437,59 @@ static void test_tc_redirect_neigh_fib(struct netns_setup_result *setup_result)
 	skel = test_tc_neigh_fib__open();
 	if (!ASSERT_OK_PTR(skel, "test_tc_neigh_fib__open"))
 		goto done;
+
+	if (!ASSERT_OK(test_tc_neigh_fib__load(skel), "test_tc_neigh_fib__load"))
+		goto done;
+
+	err = bpf_program__pin(skel->progs.tc_src, SRC_PROG_PIN_FILE);
+	if (!ASSERT_OK(err, "pin " SRC_PROG_PIN_FILE))
+		goto done;
+
+	err = bpf_program__pin(skel->progs.tc_chk, CHK_PROG_PIN_FILE);
+	if (!ASSERT_OK(err, "pin " CHK_PROG_PIN_FILE))
+		goto done;
+
+	err = bpf_program__pin(skel->progs.tc_dst, DST_PROG_PIN_FILE);
+	if (!ASSERT_OK(err, "pin " DST_PROG_PIN_FILE))
+		goto done;
+
+	if (netns_load_bpf())
+		goto done;
+
+	/* bpf_fib_lookup() checks if forwarding is enabled */
+	if (!ASSERT_OK(set_forwarding(true), "enable forwarding"))
+		goto done;
+
+	printf("\n\nsource namespace:\n");
+	SYS("ip -netns " NS_SRC " route ls");
+	printf("\n\nforward namespace:\n");
+	SYS("ip -netns " NS_FWD " route ls");
+	printf("\n\ndestination namespace:\n");
+	SYS("ip -netns " NS_DST " route ls");
+
+	test_connectivity();
+
+done:
+	if (skel)
+		test_tc_neigh_fib__destroy(skel);
+	close_netns(nstoken);
+}
+
+static void test_tc_redirect_fib_mark(struct netns_setup_result *setup_result)
+{
+	struct nstoken *nstoken = NULL;
+	struct test_tc_neigh_fib *skel = NULL;
+	int err;
+
+	nstoken = open_netns(NS_FWD);
+	if (!ASSERT_OK_PTR(nstoken, "setns fwd"))
+		return;
+
+	skel = test_tc_neigh_fib__open();
+	if (!ASSERT_OK_PTR(skel, "test_tc_neigh_fib__open"))
+		goto done;
+
+	skel->rodata->FWMARK = MARK;
 
 	if (!ASSERT_OK(test_tc_neigh_fib__load(skel), "test_tc_neigh_fib__load"))
 		goto done;
