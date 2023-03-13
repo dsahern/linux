@@ -1,0 +1,36 @@
+[  430.392427] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/8 proto 1
+[  430.392702] fib_select_multipath: changed nh from eth1-h1 to eth1-h1 hash 170346183
+[  430.392995] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 84 is_gso 0
+[  430.393258] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1500 skb len 84 gso 0
+[  430.393562] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 84 is_gso 0
+[  430.393818] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1420 skb len 84 gso 0
+[  430.394115] __ip_finish_output: dev eth0-h2 mtu 1420 skb len 84 is_gso 0
+[  430.394394] __ip_finish_output: dev eth0-h3 mtu 1420 skb len 84 is_gso 0
+[  430.394642] ip_fragment: frag_off 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 84 gso 0
+[  430.394927] __ip_finish_output: dev eth1-h2 mtu 1500 skb len 84 is_gso 0
+[  430.395163] ip_fragment: frag_off 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 84 gso 0
+[  430.395469] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 84 is_gso 0
+
+[  430.397192] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/8 proto 1
+[  430.397507] fib_select_multipath: changed nh from eth1-h1 to eth1-h1 hash 170346183
+[  430.397782] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 1478 is_gso 0
+[  430.398028] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1500 skb len 1478 gso 0
+[  430.398343] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 1478 is_gso 0
+[  430.398592] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1420 skb len 1478 gso 0
+[  430.398890] ip_fragment: sending ICMP_FRAG_NEEDED
+
+[  430.399058] fib_select_multipath: changed nh from eth1-h2 to eth1-h2 hash 296851892
+[  430.399360] __ip_finish_output: dev eth1-h2 mtu 1500 skb len 576 is_gso 0
+[  430.399611] ip_fragment: frag_off 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 576 gso 0
+[  430.399916] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 576 is_gso 0
+
+[  430.400165] icmp: icmp unreachable skb dev eth1-h1 dst dev lo: 10.100.1.1 -> 10.100.2.254
+[  430.400474] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/0 proto 1
+[  430.400781] fib_select_multipath: changed nh from eth1-h1 to eth2-h1 hash 942295428
+[  430.401056] IPv4: __ip_rt_update_pmtu: dev eth2-h1 10.100.1.1 -> 10.100.2.254 mtu 1420
+[  430.401343] IPv4: __ip_rt_update_pmtu: fib_lookup returned dev eth1-h1
+[  430.401571] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/0 proto 1
+[  430.401850] fib_select_multipath: changed nh from eth1-h1 to eth2-h1 hash 942295428
+[  430.402111] IPv4: __ip_rt_update_pmtu: after select_path dev eth2-h1
+[  430.402347] IPv4: update_or_create_fnhe: adding exception ffff888005cc9980 for dev eth2-h1 daddr 10.100.2.254 mtu 1420
+[  430.405188] IPv4: __mkroute_output: using exception ffff888005cc9980 for dev eth2-h1 addr 10.100.2.254
