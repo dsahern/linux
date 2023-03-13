@@ -2251,8 +2251,12 @@ void fib_select_path(struct net *net, struct fib_result *res,
 #ifdef CONFIG_IP_ROUTE_MULTIPATH
 	if (fib_info_num_path(res->fi) > 1) {
 		int h = fib_multipath_hash(net, fl4, skb, NULL);
+		struct fib_nh_common *nhc = res->nhc;
 
 		fib_select_multipath(res, h);
+
+		pr_err("fib_select_multipath: changed nh from %s to %s hash %u\n",
+			nhc->nhc_dev->name, res->nhc->nhc_dev->name, h);
 	}
 	else
 #endif

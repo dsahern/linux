@@ -670,6 +670,9 @@ static void update_or_create_fnhe(struct fib_nh_common *nhc, __be32 daddr,
 	}
 
 	if (fnhe) {
+		pr_err("update_or_create_fnhe: updating exception %px for dev %s daddr %pI4 mtu %u\n",
+			fnhe, nhc->nhc_dev->name, &daddr, pmtu);
+
 		if (fnhe->fnhe_genid != genid)
 			fnhe->fnhe_genid = genid;
 		if (gw)
@@ -699,6 +702,9 @@ static void update_or_create_fnhe(struct fib_nh_common *nhc, __be32 daddr,
 		fnhe = kzalloc(sizeof(*fnhe), GFP_ATOMIC);
 		if (!fnhe)
 			goto out_unlock;
+
+		pr_err("update_or_create_fnhe: adding exception %px for dev %s daddr %pI4 mtu %u\n",
+			fnhe, nhc->nhc_dev->name, &daddr, pmtu);
 
 		fnhe->fnhe_next = hash->chain;
 
@@ -1042,12 +1048,22 @@ static void __ip_rt_update_pmtu(struct rtable *rt, struct flowi4 *fl4, u32 mtu)
 	    time_before(jiffies, dst->expires - net->ipv4.ip_rt_mtu_expires / 2))
 		return;
 
+	pr_err("__ip_rt_update_pmtu: dev %s %pI4 -> %pI4 mtu %u\n",
+		dst->dev->name, &fl4->saddr, &fl4->daddr, mtu);
+
 	rcu_read_lock();
 	if (fib_lookup(net, fl4, &res, 0) == 0) {
 		struct fib_nh_common *nhc;
 
+		pr_err("__ip_rt_update_pmtu: fib_lookup returned dev %s\n",
+			res.nhc->nhc_dev->name);
+
 		fib_select_path(net, &res, fl4, NULL);
 		nhc = FIB_RES_NHC(res);
+
+		pr_err("__ip_rt_update_pmtu: after select_path dev %s\n",
+			nhc->nhc_dev->name);
+
 		update_or_create_fnhe(nhc, fl4->daddr, 0, mtu, lock,
 				      jiffies + net->ipv4.ip_rt_mtu_expires);
 	}
@@ -1077,6 +1093,8 @@ void ipv4_update_pmtu(struct sk_buff *skb, struct net *net, u32 mtu,
 	struct flowi4 fl4;
 	struct rtable *rt;
 	u32 mark = IP4_REPLY_MARK(net, skb->mark);
+
+	pr_err("ipv4_update_pmtu: mtu %u\n", mtu);
 
 	__build_flow_key(net, &fl4, NULL, iph, oif, iph->tos, protocol, mark,
 			 0);
@@ -2086,6 +2104,10 @@ int fib_multipath_hash(const struct net *net, const struct flowi4 *fl4,
 			hash_keys.ports.src = fl4->fl4_sport;
 			hash_keys.ports.dst = fl4->fl4_dport;
 			hash_keys.basic.ip_proto = fl4->flowi4_proto;
+			if (net != &init_net)
+				pr_err("fib_multipath_hash: hash based on %pI4/%d -> %pI4/%d proto %d\n",
+					&fl4->saddr, fl4->fl4_sport, &fl4->daddr,
+					fl4->fl4_dport, fl4->flowi4_proto);
 		}
 		mhash = flow_hash_from_keys(&hash_keys);
 		break;
@@ -2573,6 +2595,8 @@ static struct rtable *__mkroute_output(const struct fib_result *res,
 			goto add;
 		if (fnhe) {
 			prth = &fnhe->fnhe_rth_output;
+			pr_err("__mkroute_output: using exception %px for dev %s addr %pI4\n",
+				fnhe, nhc->nhc_dev->name, &fl4->daddr);
 		} else {
 			if (unlikely(fl4->flowi4_flags &
 				     FLOWI_FLAG_KNOWN_NH &&

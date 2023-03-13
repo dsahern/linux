@@ -297,6 +297,10 @@ static int __ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *
 	}
 #endif
 	mtu = ip_skb_dst_mtu(sk, skb);
+	if (net != &init_net)
+		pr_err("__ip_finish_output: dev %s mtu %u skb len %d is_gso %d\n",
+			skb->dev->name, mtu, skb->len, skb_is_gso(skb));
+
 	if (skb_is_gso(skb))
 		return ip_finish_output_gso(net, sk, skb, mtu);
 
@@ -576,6 +580,11 @@ static int ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 		       int (*output)(struct net *, struct sock *, struct sk_buff *))
 {
 	struct iphdr *iph = ip_hdr(skb);
+
+	if (net != &init_net)
+		pr_err("ip_fragment: frag_off %d ignore_df %d frag_max_size %d mtu %d\n",
+                        iph->frag_off & htons(IP_DF), skb->ignore_df,
+			IPCB(skb)->frag_max_size, mtu);
 
 	if ((iph->frag_off & htons(IP_DF)) == 0)
 		return ip_do_fragment(net, sk, skb, output);

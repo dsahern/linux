@@ -871,6 +871,11 @@ static enum skb_drop_reason icmp_unreach(struct sk_buff *skb)
 		goto out_err;
 	}
 
+	pr_err("icmp unreachable skb dev %s dst dev %s: %pI4 -> %pI4\n",
+		skb->dev ? skb->dev->name : "<not set>",
+		skb_dst(skb)->dev->name,
+		&iph->saddr, &iph->daddr);
+
 	switch (icmph->type) {
 	case ICMP_DEST_UNREACH:
 		switch (icmph->code & 15) {
