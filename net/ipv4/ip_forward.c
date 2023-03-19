@@ -135,15 +135,15 @@ int ip_forward(struct sk_buff *skb)
 	mtu = ip_dst_mtu_maybe_forward(&rt->dst, true);
 	if (net != &init_net) {
 		iph = ip_hdr(skb);
-		pr_err("ip_fragment: frag_off %d ignore_df %d frag_max_size %d mtu %d skb len %d gso %d\n",
-                        iph->frag_off & htons(IP_DF), skb->ignore_df,
+		pr_err("ip_forward: don't frag %d ignore_df %d frag_max_size %d mtu %d skb len %d gso %d dev %s\n",
+                        !!(iph->frag_off & htons(IP_DF)), skb->ignore_df,
                         IPCB(skb)->frag_max_size, mtu, skb->len,
-			skb_is_gso(skb));
+			skb_is_gso(skb), skb->dev->name);
 	}
 
 	if (ip_exceeds_mtu(skb, mtu)) {
 		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);
-		pr_err("ip_fragment: sending ICMP_FRAG_NEEDED\n");
+		pr_err("ip_forward: sending ICMP_FRAG_NEEDED\n");
 		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,
 			  htonl(mtu));
 		SKB_DR_SET(reason, PKT_TOO_BIG);

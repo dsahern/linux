@@ -1048,7 +1048,7 @@ static void __ip_rt_update_pmtu(struct rtable *rt, struct flowi4 *fl4, u32 mtu)
 	    time_before(jiffies, dst->expires - net->ipv4.ip_rt_mtu_expires / 2))
 		return;
 
-	pr_err("__ip_rt_update_pmtu: dev %s %pI4 -> %pI4 mtu %u\n",
+	pr_err("__ip_rt_update_pmtu: dst dev %s %pI4 -> %pI4 mtu %u\n",
 		dst->dev->name, &fl4->saddr, &fl4->daddr, mtu);
 
 	rcu_read_lock();
@@ -1077,6 +1077,8 @@ static void ip_rt_update_pmtu(struct dst_entry *dst, struct sock *sk,
 	struct rtable *rt = (struct rtable *) dst;
 	struct flowi4 fl4;
 
+	pr_err("ip_rt_update_pmtu: mtu %u\n", mtu);
+
 	ip_rt_build_flow_key(&fl4, sk, skb);
 
 	/* Don't make lookup fail for bridged encapsulations */
@@ -1094,7 +1096,8 @@ void ipv4_update_pmtu(struct sk_buff *skb, struct net *net, u32 mtu,
 	struct rtable *rt;
 	u32 mark = IP4_REPLY_MARK(net, skb->mark);
 
-	pr_err("ipv4_update_pmtu: mtu %u\n", mtu);
+	pr_err("ipv4_update_pmtu: skb dev %s %pI4 -> %pI4 proto %d mtu %u\n",
+		skb->dev->name, &iph->saddr, &iph->daddr, iph->protocol, mtu);
 
 	__build_flow_key(net, &fl4, NULL, iph, oif, iph->tos, protocol, mark,
 			 0);
@@ -1111,6 +1114,8 @@ static void __ipv4_sk_update_pmtu(struct sk_buff *skb, struct sock *sk, u32 mtu)
 	const struct iphdr *iph = (const struct iphdr *)skb->data;
 	struct flowi4 fl4;
 	struct rtable *rt;
+
+	pr_err("__ipv4_sk_update_pmtu: mtu %u\n", mtu);
 
 	__build_flow_key(sock_net(sk), &fl4, sk, iph, 0, 0, 0, 0, 0);
 
@@ -1132,6 +1137,9 @@ void ipv4_sk_update_pmtu(struct sk_buff *skb, struct sock *sk, u32 mtu)
 	struct dst_entry *odst = NULL;
 	bool new = false;
 	struct net *net = sock_net(sk);
+
+	pr_err("ipv4_sk_update_pmtu: skb dev %s %pI4 -> %pI4 proto %d mtu %u\n",
+		skb->dev->name, &iph->saddr, &iph->daddr, iph->protocol, mtu);
 
 	bh_lock_sock(sk);
 
