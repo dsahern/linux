@@ -222,6 +222,7 @@ setup_hosts()
 	ip -netns h2 link add eth0-h2 type veth peer name eth0-h3
 	ip -netns h2 link set eth0-h2 up
 	ip netns exec h2 ethtool -K eth0-h2 tso off
+	ip netns exec h2 ethtool -K eth0-h2 gso off
 	ip netns exec h2 ethtool -K eth0-h2 gro off
 	ip -netns h2 addr add dev eth0-h2 10.100.2.2/24
 	ip -netns h2 -6 addr add dev eth0-h2 2001:db8:100:2::2/64 nodad
@@ -229,6 +230,7 @@ setup_hosts()
 	ip -netns h2 link set eth0-h3 netns h3
 	ip -netns h3 link set eth0-h3 up
 	ip netns exec h3 ethtool -K eth0-h3 tso off
+	ip netns exec h3 ethtool -K eth0-h3 gso off
 	ip netns exec h3 ethtool -K eth0-h3 gro off
 	ip -netns h3 addr add dev eth0-h3 10.100.2.254/24
 	ip -netns h3 -6 addr add dev eth0-h3 2001:db8:100:2::64/64 nodad
@@ -246,6 +248,7 @@ setup_path()
 	ip -netns ${us} link add eth${j}-${us} type veth peer name eth${i}-sw
 	ip -netns ${us} link set eth${j}-${us} up
 	ip netns exec ${us} ethtool -K eth${j}-${us} tso off
+	ip netns exec ${us} ethtool -K eth${j}-${us} gso off
 	ip netns exec ${us} ethtool -K eth${j}-${us} gro off
 	ip -netns ${us} addr add dev eth${j}-${us} 10.${i}.${i}${j}.254/24
 	ip -netns ${us} -6 addr add dev eth${j}-${us} 2001:db8:${i}:${i}${j}::64/64 nodad
@@ -253,6 +256,7 @@ setup_path()
 	ip -netns ${us} link set eth${i}-sw netns ${peer}
 	ip -netns ${peer} link set eth${i}-sw name eth${i}-${us} up
 	ip netns exec ${peer} ethtool -K eth${i}-${us} tso off
+	ip netns exec ${peer} ethtool -K eth${i}-${us} gso off
 	ip netns exec ${peer} ethtool -K eth${i}-${us} gro off
 	ip -netns ${peer} addr add dev eth${i}-${us} 10.${i}.${i}${j}.${j}/24
 	ip -netns ${peer} -6 addr add dev eth${i}-${us} 2001:db8:${i}:${i}${j}::${j}/64 nodad
