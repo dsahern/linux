@@ -11,7 +11,7 @@
 # Exceptions created in h1 for h3.
 
 # number of paths - 8 exaggerates the problem
-NUMPATHS=4
+NUMPATHS=8
 
 PAUSE_ON_FAIL=no
 
