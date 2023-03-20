@@ -1,36 +1,110 @@
-[  430.392427] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/8 proto 1
-[  430.392702] fib_select_multipath: changed nh from eth1-h1 to eth1-h1 hash 170346183
-[  430.392995] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 84 is_gso 0
-[  430.393258] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1500 skb len 84 gso 0
-[  430.393562] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 84 is_gso 0
-[  430.393818] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1420 skb len 84 gso 0
-[  430.394115] __ip_finish_output: dev eth0-h2 mtu 1420 skb len 84 is_gso 0
-[  430.394394] __ip_finish_output: dev eth0-h3 mtu 1420 skb len 84 is_gso 0
-[  430.394642] ip_fragment: frag_off 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 84 gso 0
-[  430.394927] __ip_finish_output: dev eth1-h2 mtu 1500 skb len 84 is_gso 0
-[  430.395163] ip_fragment: frag_off 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 84 gso 0
-[  430.395469] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 84 is_gso 0
+In h3 namespace: nettest  -s  -p 42121
 
-[  430.397192] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/8 proto 1
-[  430.397507] fib_select_multipath: changed nh from eth1-h1 to eth1-h1 hash 170346183
-[  430.397782] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 1478 is_gso 0
-[  430.398028] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1500 skb len 1478 gso 0
-[  430.398343] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 1478 is_gso 0
-[  430.398592] ip_fragment: frag_off 64 ignore_df 0 frag_max_size 0 mtu 1420 skb len 1478 gso 0
-[  430.398890] ip_fragment: sending ICMP_FRAG_NEEDED
+In h1 namespace: nettest -r 10.100.2.254 -L 1500 -p 42121
 
-[  430.399058] fib_select_multipath: changed nh from eth1-h2 to eth1-h2 hash 296851892
-[  430.399360] __ip_finish_output: dev eth1-h2 mtu 1500 skb len 576 is_gso 0
-[  430.399611] ip_fragment: frag_off 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 576 gso 0
-[  430.399916] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 576 is_gso 0
+###
 
-[  430.400165] icmp: icmp unreachable skb dev eth1-h1 dst dev lo: 10.100.1.1 -> 10.100.2.254
-[  430.400474] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/0 proto 1
-[  430.400781] fib_select_multipath: changed nh from eth1-h1 to eth2-h1 hash 942295428
-[  430.401056] IPv4: __ip_rt_update_pmtu: dev eth2-h1 10.100.1.1 -> 10.100.2.254 mtu 1420
-[  430.401343] IPv4: __ip_rt_update_pmtu: fib_lookup returned dev eth1-h1
-[  430.401571] IPv4: fib_multipath_hash: hash based on 10.100.1.1/0 -> 10.100.2.254/0 proto 1
-[  430.401850] fib_select_multipath: changed nh from eth1-h1 to eth2-h1 hash 942295428
-[  430.402111] IPv4: __ip_rt_update_pmtu: after select_path dev eth2-h1
-[  430.402347] IPv4: update_or_create_fnhe: adding exception ffff888005cc9980 for dev eth2-h1 daddr 10.100.2.254 mtu 1420
-[  430.405188] IPv4: __mkroute_output: using exception ffff888005cc9980 for dev eth2-h1 addr 10.100.2.254
+Call to connect to remote address and port - no local address or source port
+
+[ 2274.648629] IPv4: fib_multipath_hash: hash based on 0.0.0.0/0 -> 10.100.2.254/35236 proto 6
+[ 2274.648993] fib_select_multipath: changed nh from eth1-h1 to eth6-h1 hash 1458729845
+
+--> tcp_v4_connect -> ip_route_connect -> __ip_route_output_key
+    - source address set based on nexthop of eth6-h1; see fib_select_path,
+      fib_result_prefsrc 
+
+
+Now the socket has destination address and port + source address:
+
+[ 2274.649223] IPv4: fib_multipath_hash: hash based on 10.1.16.254/0 -> 10.100.2.254/35236 proto 6
+[ 2274.649482] fib_select_multipath: changed nh from eth1-h1 to eth2-h1 hash 413528614
+
+--> tcp_v4_connect -> ip_route_connect -> ip_route_output_flow
+
+
+Further down tcp_v4_connect, source port is set and then another lookup is done:
+
+[ 2274.649728] IPv4: fib_multipath_hash: hash based on 10.1.16.254/35550 -> 10.100.2.254/35236 proto 6
+[ 2274.649990] fib_select_multipath: changed nh from eth1-h1 to eth6-h1 hash 1496914286
+
+--> notice how the hash values are changing as source address and source
+    port are set and by consequence how the nexthop path is affected
+
+
+At this point the TCP handshake is done:
+
+[ 2274.650212] __ip_finish_output: dev eth6-h1 mtu 1500 skb len 60 is_gso 0
+[ 2274.650422] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 60 gso 0 dev eth1-h1
+[ 2274.650690] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 60 is_gso 0
+[ 2274.650890] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1420 skb len 60 gso 0 dev eth6-h2
+[ 2274.651155] __ip_finish_output: dev eth0-h2 mtu 1420 skb len 60 is_gso 0
+[ 2274.651367] __ip_finish_output: dev eth0-h3 mtu 1500 skb len 60 is_gso 0
+[ 2274.651564] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 60 gso 0 dev eth0-h2
+[ 2274.651830] __ip_finish_output: dev eth6-h2 mtu 1500 skb len 60 is_gso 0
+[ 2274.652028] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 60 gso 0 dev eth2-h2
+[ 2274.652309] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 60 is_gso 0
+[ 2274.652506] __ip_finish_output: dev eth6-h1 mtu 1500 skb len 52 is_gso 0
+[ 2274.652700] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 52 gso 0 dev eth1-h1
+[ 2274.652963] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 52 is_gso 0
+[ 2274.653156] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1420 skb len 52 gso 0 dev eth6-h2
+[ 2274.653431] __ip_finish_output: dev eth0-h2 mtu 1420 skb len 52 is_gso 0
+
+
+This is the first packet with data:
+[ 2274.653710] __ip_finish_output: dev eth6-h1 mtu 1500 skb len 1552 is_gso 1
+[ 2274.653992] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 1500 gso 0 dev eth1-h1
+[ 2274.654279] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 1500 is_gso 0
+[ 2274.654479] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 104 gso 0 dev eth1-h1
+[ 2274.654746] __ip_finish_output: dev eth2-h2 mtu 1500 skb len 104 is_gso 0
+
+
+It hits h2 namespace and is to be forwarded to h3. The mtu check + pmtu
+discovert (sets don't fragment flag) causes an ICMP:
+
+[ 2274.654942] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1420 skb len 1500 gso 0 dev eth6-h2
+[ 2274.655209] ip_forward: sending ICMP_FRAG_NEEDED
+[ 2274.655369] __ip_finish_output: dev eth6-h2 mtu 1500 skb len 576 is_gso 0
+[ 2274.655569] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1420 skb len 104 gso 0 dev eth6-h2
+[ 2274.655835] __ip_finish_output: dev eth0-h2 mtu 1420 skb len 104 is_gso 0
+[ 2274.656031] ip_forward: don't frag 0 ignore_df 0 frag_max_size 0 mtu 1500 skb len 576 gso 0 dev eth2-h2
+[ 2274.656304] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 576 is_gso 0
+[ 2274.656506] __ip_finish_output: dev eth0-h3 mtu 1500 skb len 64 is_gso 0
+
+
+ICMP gets processed in h1 namespace; this time the error handler is
+in TCP code:
+
+[ 2274.656703] icmp: icmp unreachable skb dev eth6-h1 dst dev lo: 10.1.16.254 -> 10.100.2.254
+[ 2274.656941] icmp: icmp_socket_deliver: calling handler tcp_v4_err+0x0/0x387
+
+Skip these 4 lines - I think it is a retransmit)
+[ 2274.657149] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 64 gso 0 dev eth0-h2
+[ 2274.657456] __ip_finish_output: dev eth6-h2 mtu 1500 skb len 64 is_gso 0
+[ 2274.657663] ip_forward: don't frag 1 ignore_df 0 frag_max_size 0 mtu 1500 skb len 64 gso 0 dev eth2-h2
+[ 2274.657938] __ip_finish_output: dev eth1-h1 mtu 1500 skb len 64 is_gso 0
+
+And this is the call from tcp_v4_err -> tcp_v4_mtu_reduced -> inet_csk_update_pmtu -> dst->ops->update_pmtu == ip_rt_update_pmtu
+
+[ 2274.658161] IPv4: ip_rt_update_pmtu: mtu 1420
+
+Per previous discussions, there are multiple FIB lookups:
+
+[ 2274.658304] IPv4: __ip_rt_update_pmtu: dst dev eth6-h1 10.1.16.254 -> 10.100.2.254 mtu 1420
+[ 2274.658610] IPv4: __ip_rt_update_pmtu: fib_lookup returned dev eth1-h1
+[ 2274.658797] IPv4: fib_multipath_hash: hash based on 10.1.16.254/0 -> 10.100.2.254/0 proto 6
+
+and then fib_select_path in __ip_rt_update_pmtu picks the path ...
+
+[ 2274.659040] fib_select_multipath: changed nh from eth1-h1 to eth8-h1 hash 2104451076
+[ 2274.659267] IPv4: __ip_rt_update_pmtu: after select_path dev eth8-h1
+
+
+... and then creates the exception:
+
+[ 2274.659464] IPv4: update_or_create_fnhe: updating exception ffff888005b30a80 for dev eth8-h1 daddr 10.100.2.254 mtu 1420
+
+--> See the eth8-h1 -- that is not the path picked by tcp_v4_connect
+
+But in walking through the debug statements I see a problem: the ports
+are both 0 in the fib_multipath_hash at time 2274.658797  !
+
