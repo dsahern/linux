@@ -818,6 +818,7 @@ static void icmp_socket_deliver(struct sk_buff *skb, u32 info)
 	 * avoid additional coding at protocol handlers.
 	 */
 	if (!pskb_may_pull(skb, iph->ihl * 4 + 8)) {
+		pr_err("icmp_socket_deliver: may_pull failed\n");
 		__ICMP_INC_STATS(dev_net(skb->dev), ICMP_MIB_INERRORS);
 		return;
 	}
@@ -825,8 +826,12 @@ static void icmp_socket_deliver(struct sk_buff *skb, u32 info)
 	raw_icmp_error(skb, protocol, info);
 
 	ipprot = rcu_dereference(inet_protos[protocol]);
-	if (ipprot && ipprot->err_handler)
+	if (ipprot && ipprot->err_handler) {
+		pr_err("icmp_socket_deliver: calling handler %pS\n",
+			ipprot->err_handler);
 		ipprot->err_handler(skb, info);
+	} else
+		pr_err("icmp_socket_deliver: no handler\n");
 }
 
 static bool icmp_tag_validation(int proto)
@@ -1357,6 +1362,8 @@ int icmp_err(struct sk_buff *skb, u32 info)
 	int code = icmp_hdr(skb)->code;
 	struct net *net = dev_net(skb->dev);
 
+	pr_err("icmp_err: %pI4 -> %pI4 type %d code %d\n",
+		&iph->saddr, &iph->daddr, type, code);
 	/*
 	 * Use ping_err to handle all icmp errors except those
 	 * triggered by ICMP_ECHOREPLY which sent from kernel.
