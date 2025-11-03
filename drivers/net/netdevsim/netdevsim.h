@@ -82,11 +82,19 @@ struct nsim_ethtool_pauseparam {
 	bool report_stats_tx;
 };
 
+struct nsim_ethtool_settings {
+	u32   speed;
+	u8    duplex;
+	u8    autoneg;
+};
+
 struct nsim_ethtool {
 	u32 get_err;
 	u32 set_err;
 	u32 channels;
 	struct nsim_ethtool_pauseparam pauseparam;
+	struct nsim_ethtool_settings settings;
+
 	struct ethtool_coalesce coalesce;
 	struct ethtool_ringparam ring;
 	struct ethtool_fecparam fec;

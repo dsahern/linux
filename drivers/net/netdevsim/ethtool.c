@@ -24,7 +24,7 @@ nsim_get_pauseparam(struct net_device *dev, struct ethtool_pauseparam *pause)
 {
 	struct netdevsim *ns = netdev_priv(dev);
 
-	pause->autoneg = 0; /* We don't support ksettings, so can't pretend */
+	pause->autoneg = ns->ethtool.settings.autoneg;
 	pause->rx_pause = ns->ethtool.pauseparam.rx;
 	pause->tx_pause = ns->ethtool.pauseparam.tx;
 }
@@ -205,6 +205,52 @@ static int nsim_get_ts_info(struct net_device *dev,
 	return 0;
 }
 
+static int nsim_set_link_ksettings(struct net_device *dev,
+				  const struct ethtool_link_ksettings *cmd)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	if (cmd->base.port != 0) {
+		pr_err("port is %d which is not 0 as expected\n", cmd->base.port);
+		return -EINVAL;
+	}
+
+	// TO-DO: do we really care if duplex and speed in the set command
+	// is not part of the actual list? This is not a really device, so ...
+
+	ns->ethtool.settings.speed = cmd->base.speed;
+	ns->ethtool.settings.duplex = cmd->base.duplex;
+	ns->ethtool.settings.autoneg = cmd->base.autoneg;
+	return 0;
+}
+
+static int nsim_get_link_ksettings(struct net_device *dev,
+				  struct ethtool_link_ksettings *ks)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	ethtool_link_ksettings_zero_link_mode(ks, supported);
+        ethtool_link_ksettings_zero_link_mode(ks, advertising);
+
+#define NETDEVSIM_ETHTOOL_MODE(ks, mode) \
+	ethtool_link_ksettings_add_link_mode((ks), supported, mode); \
+	ethtool_link_ksettings_add_link_mode((ks), advertising, mode)
+
+	NETDEVSIM_ETHTOOL_MODE(ks, Autoneg);
+	NETDEVSIM_ETHTOOL_MODE(ks, 10baseT_Full);
+	NETDEVSIM_ETHTOOL_MODE(ks, 100baseT_Full);
+	NETDEVSIM_ETHTOOL_MODE(ks, 1000baseT_Full);
+	NETDEVSIM_ETHTOOL_MODE(ks, 10000baseT_Full);
+
+#undef NETDEVSIM_ETHTOOL_MODE
+
+	ks->base.speed = ns->ethtool.settings.speed;
+	ks->base.duplex = ns->ethtool.settings.duplex;
+	ks->base.autoneg = ns->ethtool.settings.autoneg;
+
+	return 0;
+}
+
 static const struct ethtool_ops nsim_ethtool_ops = {
 	.supported_coalesce_params	= ETHTOOL_COALESCE_ALL_PARAMS,
 	.supported_ring_params		= ETHTOOL_RING_USE_TCP_DATA_SPLIT |
@@ -222,6 +268,8 @@ static const struct ethtool_ops nsim_ethtool_ops = {
 	.set_fecparam			= nsim_set_fecparam,
 	.get_fec_stats			= nsim_get_fec_stats,
 	.get_ts_info			= nsim_get_ts_info,
+	.get_link_ksettings		= nsim_get_link_ksettings,
+	.set_link_ksettings		= nsim_set_link_ksettings,
 };
 
 static void nsim_ethtool_ring_init(struct netdevsim *ns)
@@ -249,6 +297,10 @@ void nsim_ethtool_init(struct netdevsim *ns)
 	ns->ethtool.fec.active_fec = ETHTOOL_FEC_NONE;
 
 	ns->ethtool.channels = ns->nsim_bus_dev->num_queues;
+
+	ns->ethtool.settings.speed = SPEED_1000;
+	ns->ethtool.settings.duplex = DUPLEX_FULL;
+	ns->ethtool.settings.autoneg = 1;
 
 	ethtool = debugfs_create_dir("ethtool", ns->nsim_dev_port->ddir);
 
