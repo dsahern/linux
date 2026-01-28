@@ -192,7 +192,6 @@ struct trace {
 	 * per-thread version.
 	 */
 	struct hashmap		*syscall_stats;
-	struct hashmap		*ioctl_file_stats;
 	double			duration_filter;
 	double			runtime_ms;
 	unsigned long		pfmaj, pfmin;
@@ -1558,8 +1557,8 @@ struct thread_trace {
 	} files;
 
 	struct hashmap *syscall_stats;
-	struct hashmap *ioctl_file_stats;
-	struct ioctl_file_stats *ioctl_stats;
+	struct hashmap *ioctl_stats;
+	struct ioctl_file_stats *cur_ioctl_stats;
 };
 
 static size_t syscall_id_hash(long key, void *ctx __maybe_unused)
@@ -1636,8 +1635,8 @@ static struct thread_trace *thread_trace__new(struct trace *trace)
 				return NULL;
 			}
 
-			ttrace->ioctl_file_stats = alloc_ioctl_file_stats();
-			if (IS_ERR(trace->ioctl_file_stats)) {
+			ttrace->ioctl_stats = alloc_ioctl_file_stats();
+			if (IS_ERR(ttrace->ioctl_stats)) {
 				delete_syscall_stats(ttrace->syscall_stats);
 				zfree(&ttrace);
 				return NULL;
@@ -1658,7 +1657,7 @@ static void thread_trace__delete(void *pttrace)
 		return;
 
 	delete_syscall_stats(ttrace->syscall_stats);
-	delete_ioctl_file_stats(ttrace->ioctl_file_stats);
+	delete_ioctl_file_stats(ttrace->ioctl_stats);
 	ttrace->syscall_stats = NULL;
 	thread_trace__free_files(ttrace);
 	zfree(&ttrace->entry_str);
@@ -2756,21 +2755,21 @@ static void thread__start_ioctl_file_stats(struct thread *thread,
 		pathname = "<unknown>";
 
 	/* Find or create stats entry */
-	if (!hashmap__find(ttrace->ioctl_file_stats, pathname, &stats)) {
+	if (!hashmap__find(ttrace->ioctl_stats, pathname, &stats)) {
 		stats = zalloc(sizeof(*stats));
 		if (!stats)
 			return;
 
 		init_stats(&stats->stats);
 		stats->pathname = strdup(pathname);
-		if (hashmap__add(ttrace->ioctl_file_stats, stats->pathname, stats) < 0) {
+		if (hashmap__add(ttrace->ioctl_stats, stats->pathname, stats) < 0) {
 			free(stats->pathname);
 			free(stats);
 			return;
 		}
 	}
 
-	ttrace->ioctl_stats = stats;
+	ttrace->cur_ioctl_stats = stats;
 }
 
 static void thread__end_ioctl_file_stats(struct thread_trace *ttrace,
@@ -2780,10 +2779,10 @@ static void thread__end_ioctl_file_stats(struct thread_trace *ttrace,
 		u64 duration;
 
 		duration = sample->time - ttrace->entry_time;
-		update_stats(&ttrace->ioctl_stats->stats, duration);
+		update_stats(&ttrace->cur_ioctl_stats->stats, duration);
 	}
 
-	ttrace->ioctl_stats = NULL;
+	ttrace->cur_ioctl_stats = NULL;
 }
 
 static int trace__printf_interrupted_entry(struct trace *trace)
@@ -2909,7 +2908,7 @@ static int trace__sys_enter(struct trace *trace, struct evsel *evsel,
 
 		thread__start_ioctl_file_stats(thread, ttrace, trace, fd);
 	} else {
-		ttrace->ioctl_stats = NULL;
+		ttrace->cur_ioctl_stats = NULL;
 	}
 
 	if (!(trace->duration_filter || trace->summary_only || trace->min_stack))
@@ -3054,7 +3053,7 @@ static int trace__sys_exit(struct trace *trace, struct evsel *evsel,
 	if (trace->summary)
 		thread__update_stats(thread, ttrace, id, sample, ret, trace);
 
-	if (ttrace->ioctl_stats)
+	if (ttrace->cur_ioctl_stats)
 		thread__end_ioctl_file_stats(ttrace, sample);
 
 	if (!trace->fd_path_disabled && sc->is_open && ret >= 0 && ttrace->filename.pending_open) {
@@ -4574,10 +4573,6 @@ create_maps:
 		trace->syscall_stats = alloc_syscall_stats();
 		if (IS_ERR(trace->syscall_stats))
 			goto out_delete_evlist;
-
-		trace->ioctl_file_stats = alloc_ioctl_file_stats();
-		if (IS_ERR(trace->ioctl_file_stats))
-			goto out_delete_evlist;
 	}
 
 	evlist__config(evlist, &trace->opts, &callchain_param);
@@ -4754,7 +4749,6 @@ out_disable:
 out_delete_evlist:
 	trace_cleanup_bpf_summary();
 	delete_syscall_stats(trace->syscall_stats);
-	delete_ioctl_file_stats(trace->ioctl_file_stats);
 	trace__symbols__exit(trace);
 	evlist__free_syscall_tp_fields(evlist);
 	evlist__delete(evlist);
@@ -4886,10 +4880,6 @@ static int trace__replay(struct trace *trace)
 		trace->syscall_stats = alloc_syscall_stats();
 		if (IS_ERR(trace->syscall_stats))
 			goto out;
-
-		trace->ioctl_file_stats = alloc_ioctl_file_stats();
-		if (IS_ERR(trace->ioctl_file_stats))
-			goto out;
 	}
 
 	setup_pager();
@@ -4903,7 +4893,6 @@ static int trace__replay(struct trace *trace)
 
 out:
 	delete_syscall_stats(trace->syscall_stats);
-	delete_ioctl_file_stats(trace->ioctl_file_stats);
 	perf_session__delete(session);
 
 	return err;
@@ -5136,7 +5125,7 @@ static size_t trace__fprintf_thread(FILE *fp, struct thread *thread, struct trac
 	printed += thread__dump_stats(ttrace, trace, e_machine, fp);
 
 	/* Add ioctl-by-file statistics */
-	printed += ioctl__dump_file_stats(ttrace->ioctl_file_stats, fp);
+	printed += ioctl__dump_file_stats(ttrace->ioctl_stats, fp);
 
 	return printed;
 }
@@ -5199,9 +5188,6 @@ static size_t trace__fprintf_total_summary(struct trace *trace, FILE *fp)
 
 	/* TODO: get all system e_machines. */
 	printed += system__dump_stats(trace, EM_HOST, fp);
-
-	/* Add ioctl-by-file statistics */
-	printed += ioctl__dump_file_stats(trace->ioctl_file_stats, fp);
 
 	return printed;
 }
