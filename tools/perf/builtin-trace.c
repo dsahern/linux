@@ -139,6 +139,12 @@ struct syscall_fmt {
 	bool	   hexret;
 };
 
+struct ioctl_file_stats {
+	char	     *pathname;
+	struct stats stats;
+	u64	     nr_failures;
+};
+
 struct trace {
 	struct perf_env		host_env;
 	struct perf_tool	tool;
@@ -186,6 +192,7 @@ struct trace {
 	 * per-thread version.
 	 */
 	struct hashmap		*syscall_stats;
+	struct hashmap		*ioctl_file_stats;
 	double			duration_filter;
 	double			runtime_ms;
 	unsigned long		pfmaj, pfmin;
@@ -1551,6 +1558,8 @@ struct thread_trace {
 	} files;
 
 	struct hashmap *syscall_stats;
+	struct hashmap *ioctl_file_stats;
+	struct ioctl_file_stats *ioctl_stats;
 };
 
 static size_t syscall_id_hash(long key, void *ctx __maybe_unused)
@@ -1581,16 +1590,58 @@ static void delete_syscall_stats(struct hashmap *syscall_stats)
 	hashmap__free(syscall_stats);
 }
 
+static size_t ioctl_pathname_hash(long key, void *ctx __maybe_unused)
+{
+	return str_hash((const char *)key);
+}
+
+static bool ioctl_pathname_equal(long key1, long key2, void *ctx __maybe_unused)
+{
+	return strcmp((const char *)key1, (const char *)key2) == 0;
+}
+
+static struct hashmap *alloc_ioctl_file_stats(void)
+{
+	return hashmap__new(ioctl_pathname_hash, ioctl_pathname_equal, NULL);
+}
+
+static void delete_ioctl_file_stats(struct hashmap *ioctl_file_stats)
+{
+	struct hashmap_entry *pos;
+	size_t bkt;
+
+	if (!ioctl_file_stats)
+		return;
+
+	hashmap__for_each_entry(ioctl_file_stats, pos, bkt) {
+		struct ioctl_file_stats *stats = pos->pvalue;
+		if (stats) {
+			zfree(&stats->pathname);
+			free(stats);
+		}
+	}
+	hashmap__free(ioctl_file_stats);
+}
+
 static struct thread_trace *thread_trace__new(struct trace *trace)
 {
-	struct thread_trace *ttrace =  zalloc(sizeof(struct thread_trace));
+	struct thread_trace *ttrace = zalloc(sizeof(struct thread_trace));
 
 	if (ttrace) {
 		ttrace->files.max = -1;
 		if (trace->summary) {
 			ttrace->syscall_stats = alloc_syscall_stats();
-			if (IS_ERR(ttrace->syscall_stats))
+			if (IS_ERR(ttrace->syscall_stats)) {
 				zfree(&ttrace);
+				return NULL;
+			}
+
+			ttrace->ioctl_file_stats = alloc_ioctl_file_stats();
+			if (IS_ERR(trace->ioctl_file_stats)) {
+				delete_syscall_stats(ttrace->syscall_stats);
+				zfree(&ttrace);
+				return NULL;
+			}
 		}
 	}
 
@@ -1607,6 +1658,7 @@ static void thread_trace__delete(void *pttrace)
 		return;
 
 	delete_syscall_stats(ttrace->syscall_stats);
+	delete_ioctl_file_stats(ttrace->ioctl_file_stats);
 	ttrace->syscall_stats = NULL;
 	thread_trace__free_files(ttrace);
 	zfree(&ttrace->entry_str);
@@ -2690,6 +2742,50 @@ static void thread__update_stats(struct thread *thread, struct thread_trace *ttr
 	}
 }
 
+static void thread__start_ioctl_file_stats(struct thread *thread,
+					   struct thread_trace *ttrace,
+					   struct trace *trace,
+					   int fd)
+{
+	struct ioctl_file_stats *stats = NULL;
+	const char *pathname;
+
+	/* Resolve fd to pathname */
+	pathname = thread__fd_path(thread, fd, trace);
+	if (!pathname)
+		pathname = "<unknown>";
+
+	/* Find or create stats entry */
+	if (!hashmap__find(ttrace->ioctl_file_stats, pathname, &stats)) {
+		stats = zalloc(sizeof(*stats));
+		if (!stats)
+			return;
+
+		init_stats(&stats->stats);
+		stats->pathname = strdup(pathname);
+		if (hashmap__add(ttrace->ioctl_file_stats, stats->pathname, stats) < 0) {
+			free(stats->pathname);
+			free(stats);
+			return;
+		}
+	}
+
+	ttrace->ioctl_stats = stats;
+}
+
+static void thread__end_ioctl_file_stats(struct thread_trace *ttrace,
+					 struct perf_sample *sample)
+{
+	if (ttrace->entry_time && sample->time > ttrace->entry_time) {
+		u64 duration;
+
+		duration = sample->time - ttrace->entry_time;
+		update_stats(&ttrace->ioctl_stats->stats, duration);
+	}
+
+	ttrace->ioctl_stats = NULL;
+}
+
 static int trace__printf_interrupted_entry(struct trace *trace)
 {
 	struct thread_trace *ttrace;
@@ -2805,6 +2901,15 @@ static int trace__sys_enter(struct trace *trace, struct evsel *evsel,
 		ttrace->entry_str = malloc(trace__entry_str_size);
 		if (!ttrace->entry_str)
 			goto out_put;
+	}
+
+	if (trace->summary && sc->name && strcmp(sc->name, "ioctl") == 0) {
+		unsigned long *typed_args = (unsigned long *)args;
+		int fd = (int)typed_args[0];
+
+		thread__start_ioctl_file_stats(thread, ttrace, trace, fd);
+	} else {
+		ttrace->ioctl_stats = NULL;
 	}
 
 	if (!(trace->duration_filter || trace->summary_only || trace->min_stack))
@@ -2948,6 +3053,9 @@ static int trace__sys_exit(struct trace *trace, struct evsel *evsel,
 
 	if (trace->summary)
 		thread__update_stats(thread, ttrace, id, sample, ret, trace);
+
+	if (ttrace->ioctl_stats)
+		thread__end_ioctl_file_stats(ttrace, sample);
 
 	if (!trace->fd_path_disabled && sc->is_open && ret >= 0 && ttrace->filename.pending_open) {
 		trace__set_fd_pathname(thread, ret, ttrace->filename.name);
@@ -4462,9 +4570,13 @@ create_maps:
 		goto out_delete_evlist;
 	}
 
-	if (trace->summary_mode == SUMMARY__BY_TOTAL && !trace->summary_bpf) {
+	if (trace->summary) {
 		trace->syscall_stats = alloc_syscall_stats();
 		if (IS_ERR(trace->syscall_stats))
+			goto out_delete_evlist;
+
+		trace->ioctl_file_stats = alloc_ioctl_file_stats();
+		if (IS_ERR(trace->ioctl_file_stats))
 			goto out_delete_evlist;
 	}
 
@@ -4642,6 +4754,7 @@ out_disable:
 out_delete_evlist:
 	trace_cleanup_bpf_summary();
 	delete_syscall_stats(trace->syscall_stats);
+	delete_ioctl_file_stats(trace->ioctl_file_stats);
 	trace__symbols__exit(trace);
 	evlist__free_syscall_tp_fields(evlist);
 	evlist__delete(evlist);
@@ -4769,9 +4882,13 @@ static int trace__replay(struct trace *trace)
 			evsel->handler = trace__pgfault;
 	}
 
-	if (trace->summary_mode == SUMMARY__BY_TOTAL) {
+	if (trace->summary) {
 		trace->syscall_stats = alloc_syscall_stats();
 		if (IS_ERR(trace->syscall_stats))
+			goto out;
+
+		trace->ioctl_file_stats = alloc_ioctl_file_stats();
+		if (IS_ERR(trace->ioctl_file_stats))
 			goto out;
 	}
 
@@ -4786,6 +4903,7 @@ static int trace__replay(struct trace *trace)
 
 out:
 	delete_syscall_stats(trace->syscall_stats);
+	delete_ioctl_file_stats(trace->ioctl_file_stats);
 	perf_session__delete(session);
 
 	return err;
@@ -4914,6 +5032,83 @@ static size_t system__dump_stats(struct trace *trace, int e_machine, FILE *fp)
 	return syscall__dump_stats(trace, e_machine, fp, trace->syscall_stats);
 }
 
+struct ioctl_file_entry {
+	const char		*pathname;
+	struct ioctl_file_stats	*stats;
+	double			msecs;
+};
+
+static int ioctl_file_entry_cmp(const void *a, const void *b)
+{
+	const struct ioctl_file_entry *ea = a;
+	const struct ioctl_file_entry *eb = b;
+
+	if (ea->msecs > eb->msecs)
+		return -1;
+	if (ea->msecs < eb->msecs)
+		return 1;
+	return strcmp(ea->pathname, eb->pathname);
+}
+
+static size_t ioctl__dump_file_stats(struct hashmap *ioctl_file_stats, FILE *fp)
+{
+	size_t printed = 0;
+	struct ioctl_file_entry *entries;
+	size_t nr_entries, i = 0, bkt;
+	struct hashmap_entry *pos;
+
+	if (!ioctl_file_stats || ioctl_file_stats->sz == 0)
+		return 0;
+
+	nr_entries = ioctl_file_stats->sz;
+	entries = calloc(nr_entries, sizeof(*entries));
+	if (!entries)
+		return 0;
+
+	/* Populate entries array */
+	hashmap__for_each_entry(ioctl_file_stats, pos, bkt) {
+		entries[i].pathname = (const char *)pos->pkey;
+		entries[i].stats = (struct ioctl_file_stats *)pos->pvalue;
+		entries[i].msecs = entries[i].stats->stats.n *
+				   avg_stats(&entries[i].stats->stats) / NSEC_PER_MSEC;
+		i++;
+	}
+
+	/* Sort by total time */
+	qsort(entries, nr_entries, sizeof(*entries), ioctl_file_entry_cmp);
+
+	/* Print header */
+	printed += fprintf(fp, "\n");
+	printed += fprintf(fp, " ioctl calls by file:\n");
+	printed += fprintf(fp, "   file                          calls  errors  total       min       avg       max       stddev\n");
+	printed += fprintf(fp, "                                              (msec)    (msec)    (msec)    (msec)        (%%)\n");
+	printed += fprintf(fp, "   --------------------------- -------- ------- -------- --------- --------- ---------     ------\n");
+
+	/* Print entries */
+	for (i = 0; i < nr_entries; i++) {
+		struct ioctl_file_stats *stats = entries[i].stats;
+		double min = (double)(stats->stats.min) / NSEC_PER_MSEC;
+		double max = (double)(stats->stats.max) / NSEC_PER_MSEC;
+		double avg = avg_stats(&stats->stats);
+		double pct = avg ? 100.0 * stddev_stats(&stats->stats) / avg : 0.0;
+		u64 n = (u64)stats->stats.n;
+		char display_path[32];
+
+		avg /= NSEC_PER_MSEC;
+
+		/* Truncate long pathnames */
+		snprintf(display_path, sizeof(display_path), "%s", entries[i].pathname);
+
+		printed += fprintf(fp, "   %-27s %8" PRIu64 " %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%\n",
+				  display_path, n, stats->nr_failures,
+				  entries[i].msecs, min, avg, max, pct);
+
+	}
+
+	free(entries);
+	return printed;
+}
+
 static size_t trace__fprintf_thread(FILE *fp, struct thread *thread, struct trace *trace)
 {
 	size_t printed = 0;
@@ -4939,6 +5134,9 @@ static size_t trace__fprintf_thread(FILE *fp, struct thread *thread, struct trac
 		++printed;
 
 	printed += thread__dump_stats(ttrace, trace, e_machine, fp);
+
+	/* Add ioctl-by-file statistics */
+	printed += ioctl__dump_file_stats(ttrace->ioctl_file_stats, fp);
 
 	return printed;
 }
@@ -5001,6 +5199,9 @@ static size_t trace__fprintf_total_summary(struct trace *trace, FILE *fp)
 
 	/* TODO: get all system e_machines. */
 	printed += system__dump_stats(trace, EM_HOST, fp);
+
+	/* Add ioctl-by-file statistics */
+	printed += ioctl__dump_file_stats(trace->ioctl_file_stats, fp);
 
 	return printed;
 }
