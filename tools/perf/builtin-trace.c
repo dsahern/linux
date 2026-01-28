@@ -139,9 +139,14 @@ struct syscall_fmt {
 	bool	   hexret;
 };
 
+struct ioctl_cmd_stat {
+	unsigned long cmd;
+	struct stats stats;
+};
+
 struct ioctl_file_stats {
 	char	     *pathname;
-	struct stats stats;
+	struct hashmap *ioctl_cmd_stats;
 	u64	     nr_failures;
 };
 
@@ -1558,7 +1563,7 @@ struct thread_trace {
 
 	struct hashmap *syscall_stats;
 	struct hashmap *ioctl_stats;
-	struct ioctl_file_stats *cur_ioctl_stats;
+	struct ioctl_cmd_stat *cur_ioctl_stats;
 };
 
 static size_t syscall_id_hash(long key, void *ctx __maybe_unused)
@@ -2741,12 +2746,42 @@ static void thread__update_stats(struct thread *thread, struct thread_trace *ttr
 	}
 }
 
+static size_t ioctl_cmd_hash(long key, void *ctx __maybe_unused)
+{
+	return key;
+}
+
+static bool ioctl_cmd_equal(long key1, long key2, void *ctx __maybe_unused)
+{
+	return key1 == key2;
+}
+
+static struct hashmap *alloc_ioctl_cmd_stats(void)
+{
+	return hashmap__new(ioctl_cmd_hash, ioctl_cmd_equal, NULL);
+}
+
+static void delete_ioctl_cmd_stats(struct hashmap *ioctl_cmd_stats)
+{
+	struct hashmap_entry *pos;
+	size_t bkt;
+
+	if (!ioctl_cmd_stats)
+		return;
+
+	hashmap__for_each_entry(ioctl_cmd_stats, pos, bkt)
+		free(pos->pvalue);
+
+	hashmap__free(ioctl_cmd_stats);
+}
+
 static void thread__start_ioctl_file_stats(struct thread *thread,
 					   struct thread_trace *ttrace,
 					   struct trace *trace,
-					   int fd)
+					   int fd, unsigned long cmd)
 {
 	struct ioctl_file_stats *stats = NULL;
+	struct ioctl_cmd_stat *cmd_stats = NULL;
 	const char *pathname;
 
 	/* Resolve fd to pathname */
@@ -2760,16 +2795,35 @@ static void thread__start_ioctl_file_stats(struct thread *thread,
 		if (!stats)
 			return;
 
-		init_stats(&stats->stats);
 		stats->pathname = strdup(pathname);
+		stats->ioctl_cmd_stats = alloc_ioctl_cmd_stats();
+		if (IS_ERR(stats->ioctl_cmd_stats)) {
+			free(stats->pathname);
+			free(stats);
+		}
+
 		if (hashmap__add(ttrace->ioctl_stats, stats->pathname, stats) < 0) {
+			delete_ioctl_cmd_stats(stats->ioctl_cmd_stats);
 			free(stats->pathname);
 			free(stats);
 			return;
 		}
 	}
 
-	ttrace->cur_ioctl_stats = stats;
+	if (!hashmap__find(stats->ioctl_cmd_stats, cmd, &cmd_stats)) {
+		cmd_stats = zalloc(sizeof(*cmd_stats));
+		if (!cmd_stats)
+			return;
+
+		cmd_stats->cmd = cmd;
+		init_stats(&cmd_stats->stats);
+		if (hashmap__add(stats->ioctl_cmd_stats, cmd, cmd_stats) < 0) {
+			free(cmd_stats);
+			return;
+		}
+	}
+
+	ttrace->cur_ioctl_stats = cmd_stats;
 }
 
 static void thread__end_ioctl_file_stats(struct thread_trace *ttrace,
@@ -2904,9 +2958,10 @@ static int trace__sys_enter(struct trace *trace, struct evsel *evsel,
 
 	if (trace->summary && sc->name && strcmp(sc->name, "ioctl") == 0) {
 		unsigned long *typed_args = (unsigned long *)args;
+		unsigned long cmd = typed_args[1];
 		int fd = (int)typed_args[0];
 
-		thread__start_ioctl_file_stats(thread, ttrace, trace, fd);
+		thread__start_ioctl_file_stats(thread, ttrace, trace, fd, cmd);
 	} else {
 		ttrace->cur_ioctl_stats = NULL;
 	}
@@ -5021,80 +5076,79 @@ static size_t system__dump_stats(struct trace *trace, int e_machine, FILE *fp)
 	return syscall__dump_stats(trace, e_machine, fp, trace->syscall_stats);
 }
 
-struct ioctl_file_entry {
-	const char		*pathname;
-	struct ioctl_file_stats	*stats;
-	double			msecs;
-};
-
-static int ioctl_file_entry_cmp(const void *a, const void *b)
+static size_t ioctl__dump_cmd_stats(struct hashmap *ioctl_cmd_stats, const char *pathname, FILE *fp)
 {
-	const struct ioctl_file_entry *ea = a;
-	const struct ioctl_file_entry *eb = b;
+	struct hashmap_entry *pos;
+	size_t printed = 0;
+	size_t bkt;
 
-	if (ea->msecs > eb->msecs)
-		return -1;
-	if (ea->msecs < eb->msecs)
-		return 1;
-	return strcmp(ea->pathname, eb->pathname);
+	if (!ioctl_cmd_stats || !ioctl_cmd_stats->sz)
+		return 0;
+
+	printed += fprintf(fp, "\nfile: %s\n\n", pathname);
+
+	printed += fprintf(fp, "        cmd     dir type  nr      sz    calls    total       min       avg       max   stddev (%%)\n");
+	printed += fprintf(fp, "   --------------------------------- -------- -------- --------- --------- --------- ----------\n");
+
+	hashmap__for_each_entry(ioctl_cmd_stats, pos, bkt) {
+		double msecs, min, max, avg, pct;
+		struct ioctl_cmd_stat *cmd_stat;
+		int dir, ctype, nr, sz;
+		struct stats *stats;
+		char cdir1 = ' ', cdir2 = ' ';
+
+		cmd_stat = (struct ioctl_cmd_stat *)pos->pvalue;
+		stats = &cmd_stat->stats;
+
+		msecs = stats->n * avg_stats(stats) / NSEC_PER_MSEC;
+		min = (double)(stats->min) / NSEC_PER_MSEC;
+		max = (double)(stats->max) / NSEC_PER_MSEC;
+		avg = avg_stats(stats);
+		pct = avg ? 100.0 * stddev_stats(stats) / avg : 0.0;
+		avg /= NSEC_PER_MSEC;
+
+		dir = _IOC_DIR(cmd_stat->cmd);
+		ctype = _IOC_TYPE(cmd_stat->cmd);
+		nr = _IOC_NR(cmd_stat->cmd);
+		sz = _IOC_SIZE(cmd_stat->cmd);
+
+		if (dir == _IOC_NONE) {
+			cdir1 = 'N';
+		} else {
+			if (dir & _IOC_READ)
+				cdir1 = 'R';
+			if (dir & _IOC_WRITE)
+				cdir2 = 'W';
+		}
+
+		printed += fprintf(fp, "0x%012" PRIu64 " %c%c 0x%02x 0x%04x %6d %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%\n",
+				   (u64)cmd_stat->cmd, cdir1, cdir2, ctype, nr, sz, (u64)stats->n, msecs, min, avg, max, pct);
+	}
+
+	return printed;
 }
 
 static size_t ioctl__dump_file_stats(struct hashmap *ioctl_file_stats, FILE *fp)
 {
-	size_t printed = 0;
-	struct ioctl_file_entry *entries;
-	size_t nr_entries, i = 0, bkt;
 	struct hashmap_entry *pos;
+	size_t printed = 0;
+	size_t bkt;
 
 	if (!ioctl_file_stats || ioctl_file_stats->sz == 0)
 		return 0;
 
-	nr_entries = ioctl_file_stats->sz;
-	entries = calloc(nr_entries, sizeof(*entries));
-	if (!entries)
-		return 0;
+	printed += fprintf(fp, "\n");
+	printed += fprintf(fp, "ioctl calls by file (total, min, avg, max in msec)\n");
 
 	/* Populate entries array */
 	hashmap__for_each_entry(ioctl_file_stats, pos, bkt) {
-		entries[i].pathname = (const char *)pos->pkey;
-		entries[i].stats = (struct ioctl_file_stats *)pos->pvalue;
-		entries[i].msecs = entries[i].stats->stats.n *
-				   avg_stats(&entries[i].stats->stats) / NSEC_PER_MSEC;
-		i++;
+		struct ioctl_file_stats *ioctl_stats;
+
+		ioctl_stats = (struct ioctl_file_stats *)pos->pvalue;
+		printed += ioctl__dump_cmd_stats(ioctl_stats->ioctl_cmd_stats,
+						 ioctl_stats->pathname, fp);
 	}
 
-	/* Sort by total time */
-	qsort(entries, nr_entries, sizeof(*entries), ioctl_file_entry_cmp);
-
-	/* Print header */
-	printed += fprintf(fp, "\n");
-	printed += fprintf(fp, " ioctl calls by file:\n");
-	printed += fprintf(fp, "   file                          calls  errors  total       min       avg       max       stddev\n");
-	printed += fprintf(fp, "                                              (msec)    (msec)    (msec)    (msec)        (%%)\n");
-	printed += fprintf(fp, "   --------------------------- -------- ------- -------- --------- --------- ---------     ------\n");
-
-	/* Print entries */
-	for (i = 0; i < nr_entries; i++) {
-		struct ioctl_file_stats *stats = entries[i].stats;
-		double min = (double)(stats->stats.min) / NSEC_PER_MSEC;
-		double max = (double)(stats->stats.max) / NSEC_PER_MSEC;
-		double avg = avg_stats(&stats->stats);
-		double pct = avg ? 100.0 * stddev_stats(&stats->stats) / avg : 0.0;
-		u64 n = (u64)stats->stats.n;
-		char display_path[32];
-
-		avg /= NSEC_PER_MSEC;
-
-		/* Truncate long pathnames */
-		snprintf(display_path, sizeof(display_path), "%s", entries[i].pathname);
-
-		printed += fprintf(fp, "   %-27s %8" PRIu64 " %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%\n",
-				  display_path, n, stats->nr_failures,
-				  entries[i].msecs, min, avg, max, pct);
-
-	}
-
-	free(entries);
 	return printed;
 }
 
