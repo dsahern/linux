@@ -5087,8 +5087,8 @@ static size_t ioctl__dump_cmd_stats(struct hashmap *ioctl_cmd_stats, const char 
 
 	printed += fprintf(fp, "\nfile: %s\n\n", pathname);
 
-	printed += fprintf(fp, "        cmd     dir type  nr      sz    calls    total       min       avg       max   stddev (%%)\n");
-	printed += fprintf(fp, "   --------------------------------- -------- -------- --------- --------- --------- ----------\n");
+	printed += fprintf(fp, "        cmd   dir type   nr     size   calls   total      min       avg       max    stddev (%%)\n");
+	printed += fprintf(fp, "   --------------------------------- -------- -------- --------- --------- --------- -----------\n");
 
 	hashmap__for_each_entry(ioctl_cmd_stats, pos, bkt) {
 		double msecs, min, max, avg, pct;
