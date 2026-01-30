@@ -5087,8 +5087,8 @@ static size_t ioctl__dump_cmd_stats(struct hashmap *ioctl_cmd_stats, const char 
 
 	printed += fprintf(fp, "\nfile: %s\n\n", pathname);
 
-	printed += fprintf(fp, "        cmd   dir type   nr     size   calls   total      min       avg       max    stddev (%%)\n");
-	printed += fprintf(fp, "   --------------------------------- -------- -------- --------- --------- --------- -----------\n");
+	printed += fprintf(fp, "  dir type nr   size    calls   total      min       avg       max    stddev (%%)\n");
+	printed += fprintf(fp, "  ------------------- -------- -------- --------- --------- --------- -----------\n");
 
 	hashmap__for_each_entry(ioctl_cmd_stats, pos, bkt) {
 		double msecs, min, max, avg, pct;
@@ -5126,8 +5126,8 @@ static size_t ioctl__dump_cmd_stats(struct hashmap *ioctl_cmd_stats, const char 
 		if (!cmd_name)
 			cmd_name = "<UNKNOWN>";
 
-		printed += fprintf(fp, "0x%012" PRIu64 " %c%c 0x%02x 0x%04x %6d %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%  %s\n",
-				   (u64)cmd_stat->cmd, cdir1, cdir2, ctype, nr, sz, (u64)stats->n, msecs, min, avg, max, pct, cmd_name);
+		printed += fprintf(fp, "  %c%c 0x%02x 0x%02x %6d %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%  %s\n",
+				   cdir1, cdir2, ctype, nr, sz, (u64)stats->n, msecs, min, avg, max, pct, cmd_name);
 	}
 
 	return printed;
