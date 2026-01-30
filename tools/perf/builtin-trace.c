@@ -5096,6 +5096,7 @@ static size_t ioctl__dump_cmd_stats(struct hashmap *ioctl_cmd_stats, const char 
 		int dir, ctype, nr, sz;
 		struct stats *stats;
 		char cdir1 = ' ', cdir2 = ' ';
+		const char *cmd_name;
 
 		cmd_stat = (struct ioctl_cmd_stat *)pos->pvalue;
 		stats = &cmd_stat->stats;
@@ -5121,8 +5122,12 @@ static size_t ioctl__dump_cmd_stats(struct hashmap *ioctl_cmd_stats, const char 
 				cdir2 = 'W';
 		}
 
-		printed += fprintf(fp, "0x%012" PRIu64 " %c%c 0x%02x 0x%04x %6d %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%\n",
-				   (u64)cmd_stat->cmd, cdir1, cdir2, ctype, nr, sz, (u64)stats->n, msecs, min, avg, max, pct);
+		cmd_name = syscall_arg__ioctl_cmd_lookup(pathname, nr);
+		if (!cmd_name)
+			cmd_name = "<UNKNOWN>";
+
+		printed += fprintf(fp, "0x%012" PRIu64 " %c%c 0x%02x 0x%04x %6d %7" PRIu64 " %8.3f %9.3f %9.3f %9.3f %9.2f%%  %s\n",
+				   (u64)cmd_stat->cmd, cdir1, cdir2, ctype, nr, sz, (u64)stats->n, msecs, min, avg, max, pct, cmd_name);
 	}
 
 	return printed;
@@ -5635,6 +5640,7 @@ int cmd_trace(int argc, const char **argv)
 		.max_events = ULONG_MAX,
 	};
 	const char *output_name = NULL;
+	const char *ioctl_dir_name = NULL;
 	const struct option trace_options[] = {
 	OPT_CALLBACK('e', "event", &trace, "event",
 		     "event/syscall selector. use 'perf list' to list available events",
@@ -5717,6 +5723,7 @@ int cmd_trace(int argc, const char **argv)
 	OPT_BOOLEAN(0, "bpf-summary", &trace.summary_bpf, "Summary syscall stats in BPF"),
 	OPT_INTEGER(0, "max-summary", &trace.max_summary,
 		     "Max number of entries in the summary."),
+	OPT_STRING(0, "ioctl-dir", &ioctl_dir_name, "path", "directory name with ioctl mappings"),
 	OPTS_EVSWITCH(&trace.evswitch),
 	OPT_END()
 	};
@@ -5829,6 +5836,14 @@ int cmd_trace(int argc, const char **argv)
 	err = augmented_syscalls__create_bpf_output(trace.evlist);
 	if (err == 0)
 		trace.syscalls.events.bpf_output = evlist__last(trace.evlist);
+
+	if (ioctl_dir_name) {
+		err = syscall_arg__ioctl_cmd_decode_init(ioctl_dir_name);
+		if (err) {
+			pr_err("Failed to load ioctl mappings\n");
+			goto out;
+		}
+	}
 
 skip_augmentation:
 	err = -1;
@@ -6022,6 +6037,8 @@ out_close:
 		fclose(trace.output);
 out:
 	trace__exit(&trace);
+	if (ioctl_dir_name)
+		syscall_arg__ioctl_cmd_decode_fini();
 	augmented_syscalls__cleanup();
 	return err;
 }

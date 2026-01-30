@@ -5,8 +5,18 @@
  *  Copyright (C) 2017, Red Hat Inc, Arnaldo Carvalho de Melo <acme@redhat.com>
  */
 
-#include "trace/beauty/beauty.h"
 #include <linux/kernel.h>
+#include <linux/list.h>
+#include <linux/string.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <errno.h>
+
+#include "trace/beauty/beauty.h"
+#include "rblist.h"
 
 /*
  * FIXME: to support all arches we have to improve this, for
@@ -185,3 +195,275 @@ size_t syscall_arg__scnprintf_ioctl_cmd(char *bf, size_t size, struct syscall_ar
 
 	return ioctl__scnprintf_cmd(cmd, bf, size, arg->show_string_prefix);
 }
+
+struct ioctl_node {
+	struct rb_node rb_node;
+	unsigned long op;
+	char *name;
+};
+
+struct ioctl_list {
+	struct rblist rb_list;
+	struct list_head list;
+	char *fname;
+};
+
+static struct rb_node *ioctl__node_new(struct rblist *rblist __maybe_unused,
+				       const void *entry)
+{
+	const struct ioctl_node *e = entry;
+	struct ioctl_node *inode;
+
+	inode = calloc(1, sizeof(*inode));
+	if (inode == NULL)
+		return NULL;
+
+	inode->op = e->op;
+	inode->name = strdup(e->name);
+	if (!inode->name) {
+		free(inode);
+		return NULL;
+	}
+
+	return &inode->rb_node;
+}
+
+static void ioctl__node_delete(struct rblist *rblisti __maybe_unused,
+			       struct rb_node *rb_node)
+{
+	struct ioctl_node *inode = container_of(rb_node, struct ioctl_node, rb_node);
+
+	free(inode->name);
+	free(inode);
+}
+
+static int ioctl__node_cmp(struct rb_node *rb_node, const void *entry)
+{
+	const struct ioctl_node *e = entry;
+	struct ioctl_node *inode = container_of(rb_node, struct ioctl_node, rb_node);
+
+	if (inode->op < e->op)
+		return -1;
+	if (inode->op > e->op)
+		return 1;
+	return 0;
+}
+
+static struct ioctl_node *ioctl_find_op(struct ioctl_list *ilist, unsigned long op)
+{
+	struct ioctl_node inode = { .op = op };
+	struct rb_node *rb_node;
+
+	rb_node = rblist__find(&ilist->rb_list, &inode);
+	if (rb_node)
+		return container_of(rb_node, struct ioctl_node, rb_node);
+
+	return NULL;
+}
+
+static void ioctl__list_delete(struct ioctl_list *ilist)
+{
+	list_del(&ilist->list);
+
+	rblist__exit(&ilist->rb_list);
+	free(ilist->fname);
+	free(ilist);
+}
+
+static struct ioctl_list *ioctl__list_new(const char *fname)
+{
+	struct ioctl_list *ilist;
+
+	ilist = calloc(1, sizeof(*ilist));
+	if (ilist) {
+		ilist->fname = strdup(fname);
+		if (!ilist->fname) {
+			free(ilist);
+			ilist = NULL;
+		}
+
+		rblist__init(&ilist->rb_list);
+		ilist->rb_list.node_cmp = ioctl__node_cmp;
+		ilist->rb_list.node_new = ioctl__node_new;
+		ilist->rb_list.node_delete = ioctl__node_delete;
+
+		INIT_LIST_HEAD(&ilist->list);
+	}
+
+	return ilist;
+}
+
+#define IOCTL_FILE_STR "file: "
+
+static int load_file(const char *fname, struct ioctl_list **pilist)
+{
+	struct ioctl_list *ilist = NULL;
+	unsigned int lineno = 0;
+	char buf[128], *p;
+	int rc = 0;
+	FILE *fp;
+
+	*pilist = NULL;
+
+	fp = fopen(fname, "r");
+	if (!fp) {
+		fprintf(stderr, "Failed to open %s: %s: %d\n", fname, strerror(errno), errno);
+		return -1;
+	}
+
+	/* first line should be "# ioctl map" */
+	if (fgets(buf, sizeof(buf), fp) == NULL ||
+	    strncmp(buf, "# ioctl map", 11)) {
+		fclose(fp);
+		return 0;
+	}
+
+	while (fgets(buf, sizeof(buf), fp)) {
+		char *nl;
+
+		lineno++;
+
+		nl = strchr(buf, '\n');
+		if (nl)
+			*nl = '\0';
+
+		p = strim(buf);
+		if (strlen(p) == 0 || *p == '#')
+			continue;
+
+		if (!ilist) {
+			if (strncmp(p, IOCTL_FILE_STR, sizeof(IOCTL_FILE_STR) - 1))
+				continue;
+
+			p += sizeof(IOCTL_FILE_STR) - 1;
+			p = skip_spaces(p);
+
+			ilist = ioctl__list_new(p);
+			if (!ilist) {
+				rc = -ENOMEM;
+				break;
+			}
+		} else {
+			char *sp = strchr(p, ' '), *endp = NULL;
+			struct ioctl_node node;
+			int err;
+
+			if (!sp)
+				continue;
+
+			node.name = strim(p);
+
+			*sp = 0;
+			sp++;
+			node.op = strtoul(sp, &endp, 0);
+			if (endp && *endp != '\0') {
+				rc = -EINVAL;
+				fprintf(stderr,
+					"Invalid entry at line %d; endp %s\n",
+					lineno, endp);
+				break;
+			}
+
+			err = rblist__add_node(&ilist->rb_list, &node);
+			if (err) {
+				rc = err;
+				fprintf(stderr,
+					"Failed to add entry for line %d\n",
+					lineno);
+				break;
+			}
+		}
+	}
+
+	fclose(fp);
+
+	if (rc) {
+		ioctl__list_delete(ilist);
+		ilist = NULL;
+	} else if (!ilist)
+		rc = -EINVAL;
+
+	*pilist = ilist;
+	return rc;
+}
+
+static LIST_HEAD(ioctl_list);
+
+void syscall_arg__ioctl_cmd_decode_fini(void)
+{
+	struct list_head *pos, *next;
+
+	list_for_each_safe(pos, next, &ioctl_list) {
+		struct ioctl_list *ilist;
+
+		ilist = container_of(pos, struct ioctl_list, list);
+		ioctl__list_delete(ilist);
+	}
+}
+
+int syscall_arg__ioctl_cmd_decode_init(const char *dirname)
+{
+	struct ioctl_list *ilist;
+	struct dirent *de;
+	int err;
+	DIR *d;
+
+	d = opendir(dirname);
+	if (d == NULL) {
+		fprintf(stderr, "Failed to open directory\n");
+		return -errno;
+	}
+
+	while ((de = readdir(d)) != NULL) {
+		char path[PATH_MAX];
+
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+
+		snprintf(path, sizeof(path), "%s/%s", dirname, de->d_name);
+
+		err = load_file(path, &ilist);
+		if (err)
+			break;
+
+		if (ilist)
+			list_add(&ilist->list, &ioctl_list);
+	}
+
+	closedir(d);
+
+	return 0;
+}
+
+static struct ioctl_list *ioctl_find_file(const char *fname)
+{
+	struct list_head *pos;
+
+	list_for_each(pos, &ioctl_list) {
+		struct ioctl_list *ilist;
+
+		ilist = container_of(pos, struct ioctl_list, list);
+		if (strcmp(ilist->fname, fname) == 0)
+			return ilist;
+	}
+
+	return NULL;
+}
+
+const char *syscall_arg__ioctl_cmd_lookup(const char *fname, unsigned long op)
+{
+	static struct ioctl_list *ilist = NULL;
+	struct ioctl_node *inode;
+
+	if (!ilist || strcmp(ilist->fname, fname))
+		ilist = ioctl_find_file(fname);
+
+	if (ilist) {
+		inode = ioctl_find_op(ilist, op);
+		if (inode)
+			return inode->name;
+	}
+
+	return NULL;
+}
+

@@ -265,4 +265,8 @@ size_t open__scnprintf_flags(unsigned long flags, char *bf, size_t size, bool sh
 void syscall_arg__set_ret_scnprintf(struct syscall_arg *arg,
 				    size_t (*ret_scnprintf)(char *bf, size_t size, struct syscall_arg *arg));
 
+void syscall_arg__ioctl_cmd_decode_fini(void);
+int syscall_arg__ioctl_cmd_decode_init(const char *dirname);
+const char *syscall_arg__ioctl_cmd_lookup(const char *fname, unsigned long op);
+
 #endif /* _PERF_TRACE_BEAUTY_H */
