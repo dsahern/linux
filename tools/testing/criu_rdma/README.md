@@ -13,6 +13,115 @@ make -C tools/testing/criu_rdma
 Builds `tools/mlx5_vfmig`, a small CLI over the vfmig ioctls (see its
 header comment for the verbs).
 
+## SAVE benchmark
+
+`tools/qp_save_bench` creates exactly 1,000 idle RC QPs in INIT on an
+existing VF, sharing one PD and one CQ. Each QP has 16 send and receive
+WRs and one SGE per WR. It times a whole-VF `SAVE_VHCA_STATE`, drains the
+image to a reusable memory buffer, and closes the save fd. QP creation
+and destruction are outside the measured interval; no image is written
+to disk. Requires libibverbs headers and library to build.
+
+```
+make -C tools/testing/criu_rdma bench
+```
+
+Use an idle, dedicated VF on a PF whose firmware advertises `migration`
+and `vhca_resource_manager`. Pass the VF's current verbs device name.
+
+```sh
+sudo tools/testing/criu_rdma/tools/qp_save_bench 0000:08:00.0 0 mlx5_2 10
+```
+
+Arguments are `<pf-bdf> <vf-id> <vf-ibdev> [iterations=10] [port=1]`.
+The benchmark verifies the VF and calls `ENABLE_MIGRATABLE` before opening
+the verbs device. An already-enabled VF can stay bound. If firmware returns
+`EINVAL` on a VF bound to `mlx5_core`, the benchmark unbinds it, retries the
+ioctl, and rebinds it. This interrupts the VF's network and RDMA services.
+The benchmark locates the verbs device by PCI address after rebind, so it
+can use the new name. Migration setup is outside the measured interval.
+
+SAVE temporarily suspends the entire VF, including any other users' QPs.
+Leave it running normally before starting; SAVE restores the suspension
+steps it issued when the save fd closes.
+
+If `ENABLE_MIGRATABLE` or SAVE fails, check the mlx5 `vfmig` messages in
+the kernel log for details such as missing PF firmware capabilities.
+
+Output has one CSV row per iteration, including image bytes and elapsed
+milliseconds for the synchronous save ioctl (`save_ms`), image reads
+(`read_ms`), close/resource release/resume (`close_ms`), and all three
+(`total_ms`). A final line reports mean/min/max total time. All iterations
+are measured, including the first; there is no warmup. The ioctl time
+includes suspend, snapshot sizing, image allocation, firmware SAVE and
+host-page capture. This measures all objects on the VF with 1,000 added
+QPs, rather than isolated per-QP serialization or CRIU process checkpoint
+time. The QPs carry no traffic and are not connected.
+
+## IB object save and restore benchmark
+
+`tools/ib_objects_bench.py` runs the CRIU mlx5 migration path on one host.
+It holds idle RC QPs in INIT, dumps them with CRIU, recycles the VF,
+loads the firmware image with `mlx5_vfmig_restore_vf`, and restores the
+process with CRIU. After restore it queries every QP through its restored
+verbs handle and checks that each is still in INIT.
+
+```sh
+make -C tools/testing/criu_rdma bench
+sudo tools/testing/criu_rdma/tools/ib_objects_bench.py 0000:08:00.0 0 \
+    --qps 1000 --groups 10 --iterations 10
+```
+
+Use an existing, idle, dedicated mlx5 Ethernet VF in a DMA IOMMU domain
+with no UUID or tracked state. If the VF starts bound to `mlx5_core`,
+the benchmark unbinds it before the first trial and rebinds it during
+final cleanup. Each trial binds and recycles the VF in place. Rebinding
+recreates the network interface and verbs device. Run as root with
+bpftrace, iproute2, and matching RDMA-enabled CRIU, mlx5 plugin and
+firmware prerestore helper. `--criu`, `--plugin`, and `--prerestore`
+select alternate builds. The CRIU binary must retain the uobject function
+symbols for uprobes, and the running kernel must expose the uverbs
+RESTORE handlers to kprobes.
+
+`--qps` defaults to 1000 and `--groups` to 1. Each group has one PD, one
+CQ and one page-sized registered MR. The QPs are spread across the groups
+and have 16 send and receive WRs each. Increase the group count to stress
+PD, CQ and MR replay as well as QP replay. The benchmark verifies the
+number of successful restore calls for each object type.
+
+The CSV reports summed elapsed time in the instrumented functions, in
+milliseconds. `save_ms` combines CRIU uobject capture and image emission.
+`restore_ms` combines image collection, uobject DAG replay, preparation for
+the in-process restorer, and the kernel CQ, MR and QP handlers. The PD handler
+time is also reported separately and is included once via `dag_ms`.
+Firmware SAVE and LOAD, VF reconfiguration, and other process checkpoint
+and restore work are outside these timings. Each iteration uses fresh
+images. Logs, traces, and images from a failed run are retained at the
+printed path under `/tmp`.
+
+### Direct uverbs mode
+
+```sh
+make -C tools/testing/criu_rdma bench
+sudo tools/testing/criu_rdma/tools/ib_objects_bench.py 0000:08:00.0 0 \
+    --direct --qps 1000 --groups 10 --iterations 10
+```
+
+`--direct` runs without CRIU, the mlx5 CRIU plugin, or bpftrace. A single
+worker creates idle RC QPs in INIT, captures their PD, CQ, MR and QP state
+through uverbs, and keeps their backing memory mapped across VF recycle.
+After `mlx5_vfmig` saves and loads the firmware image, the worker opens
+a restore-mode ucontext and uses `RESTORE_PD`, `RESTORE_CQ`, `RESTORE_MR`
+and `RESTORE_QP` to adopt the loaded objects at their original handles.
+It checks the restored CQ sizes, MR keys, QPNs and QP states.
+
+In this mode `save_ms` covers the object queries and `restore_ms` covers
+the four restore batches. The per-type columns report those batches
+individually. The worker's monotonic clock measures elapsed time around
+the batches. Ucontext setup, firmware SAVE/LOAD, and post-restore QP
+queries are outside the measurements. The same dedicated VF and IOMMU
+requirements apply.
+
 ## Harnesses
 
 - `save_load/test_xvf_save_load.sh` -- SAVE on one VF, recreate the VF

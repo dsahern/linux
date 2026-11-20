@@ -2391,9 +2391,9 @@ static long vfmig_ioc_save_vhca_state(struct mlx5_vfmig_pf *vfmig,
 	}
 
 	fd_install(fd, file);
-	mlx5_core_info(pf_mdev,
-		       "vfmig: saved vf %u (vhca_id 0x%04x) state: %llu bytes\n",
-		       arg.vf_id, vhca_id, actual_size);
+	//mlx5_core_info(pf_mdev,
+	//	       "vfmig: saved vf %u (vhca_id 0x%04x) state: %llu bytes\n",
+	//	       arg.vf_id, vhca_id, actual_size);
 	return 0;
 
 err_file:
