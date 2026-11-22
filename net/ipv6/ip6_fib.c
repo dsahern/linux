@@ -148,12 +148,12 @@ void fib6_update_sernum(struct net *net, struct fib6_info *f6i)
 		WRITE_ONCE(fn->fn_sernum, fib6_new_sernum(net));
 }
 
-/* Tell route dumps that an exception was added under @f6i. A dump notices
- * a changed tree through the root node, so only an exception on the root
- * needs to be visible. Use a table sequence for that, rather than a fresh
- * fn_sernum, so that it does not depend on what else a change to fn_sernum
- * does: fresh values can only come from the netns counter, and a made-up
- * one could later be issued by the counter to the same node.
+/* Tell route dumps that an exception was added under @f6i without
+ * invalidating cached dsts: those follow the netns generation, which this
+ * leaves alone. A dump notices a changed tree through the root node, so
+ * only an exception on the root needs to be visible. Fresh fn_sernum values
+ * can only come from the netns counter, so use a table sequence rather than
+ * a made-up fn_sernum that the counter could later issue again.
  * Caller holds tb6_lock.
  */
 void fib6_update_excp_seq(struct fib6_info *f6i)
@@ -1455,8 +1455,6 @@ static void __fib6_update_sernum_upto_root(struct fib6_info *rt,
 	struct fib6_node *fn = rcu_dereference_protected(rt->fib6_node,
 				lockdep_is_held(&rt->fib6_table->tb6_lock));
 
-	/* paired with smp_rmb() in fib6_get_cookie_safe() */
-	smp_wmb();
 	while (fn) {
 		WRITE_ONCE(fn->fn_sernum, sernum);
 		fn = rcu_dereference_protected(fn->parent,

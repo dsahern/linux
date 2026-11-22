@@ -9,6 +9,7 @@
 #ifndef _IP6_FIB_H
 #define _IP6_FIB_H
 
+#include <linux/cpumask.h>
 #include <linux/ipv6_route.h>
 #include <linux/rtnetlink.h>
 #include <linux/spinlock.h>
@@ -152,6 +153,11 @@ struct fib6_nh {
 #endif
 
 	struct rt6_info * __percpu *rt6i_pcpu;
+	/* CPUs that installed a dst in rt6i_pcpu since the last time an
+	 * exception insert invalidated them, so that it does not have to
+	 * look at every possible CPU.
+	 */
+	cpumask_var_t		rt6i_pcpu_dirty;
 	struct rt6_exception_bucket __rcu *rt6i_exception_bucket;
 };
 
@@ -273,51 +279,12 @@ static inline bool fib6_check_expired(const struct fib6_info *f6i)
 	return false;
 }
 
-/* Function to safely get fn->fn_sernum for passed in rt
- * and store result in passed in cookie.
- * Return true if we can get cookie safely
- * Return false if not
- */
-static inline bool fib6_get_cookie_safe(const struct fib6_info *f6i,
-					u32 *cookie)
-{
-	struct fib6_node *fn;
-	bool status = false;
-
-	fn = rcu_dereference(f6i->fib6_node);
-
-	if (fn) {
-		*cookie = READ_ONCE(fn->fn_sernum);
-		/* pairs with smp_wmb() in __fib6_update_sernum_upto_root() */
-		smp_rmb();
-		status = true;
-	}
-
-	return status;
-}
-
 static inline u32 rt6_get_cookie(const struct rt6_info *rt)
 {
-	struct fib6_info *from;
-	u32 cookie = 0;
-	int sernum;
-
-	/* Can be stale-marked concurrently (rt6_dst_invalidate()): test and
-	 * return one sample.
+	/* sernum is the netns route generation the dst was created under;
+	 * ip6_dst_check() compares it to the current one.
 	 */
-	sernum = READ_ONCE(rt->sernum);
-	if (sernum)
-		return sernum;
-
-	rcu_read_lock();
-
-	from = rcu_dereference(rt->from);
-	if (from)
-		fib6_get_cookie_safe(from, &cookie);
-
-	rcu_read_unlock();
-
-	return cookie;
+	return READ_ONCE(rt->sernum);
 }
 
 /* An invalidated dst keeps the generation it was built under in the low
