@@ -231,6 +231,11 @@ struct fib6_result {
 	u32			fib6_flags;
 	u8			fib6_type;
 	struct rt6_info		*rt6;
+	/* Route generation sampled before the FIB was read. Dsts built
+	 * from this result are stamped with it, not with the generation
+	 * at allocation time. 0 means not sampled.
+	 */
+	int			sernum;
 };
 
 #define for_each_fib6_node_rt_rcu(fn)					\
@@ -303,6 +308,12 @@ static inline void rt6_dst_invalidate(struct rt6_info *rt)
 	 */
 	if (!(sernum & RT6_SERNUM_STALE))
 		WRITE_ONCE(rt->sernum, sernum | RT6_SERNUM_STALE);
+}
+
+/* The generation @rt was built under, whether or not it is still valid */
+static inline int rt6_dst_sernum(const struct rt6_info *rt)
+{
+	return READ_ONCE(rt->sernum) & ~RT6_SERNUM_STALE;
 }
 
 static inline void ip6_rt_put(struct rt6_info *rt)

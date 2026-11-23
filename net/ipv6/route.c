@@ -1214,6 +1214,12 @@ static void ip6_rt_copy_init(struct rt6_info *rt, const struct fib6_result *res)
 	rt->rt6i_idev = dev ? in6_dev_get(dev) : NULL;
 	ip6_rt_init_dst(rt, res);
 
+	/* Pair the dst with the generation the FIB was read under, so a
+	 * change between the lookup and this allocation is not folded in.
+	 */
+	if (res->sernum)
+		rt->sernum = res->sernum;
+
 	rt->rt6i_dst = f6i->fib6_dst;
 	rt->rt6i_flags = res->fib6_flags;
 	if (nh->fib_nh_gw_family) {
@@ -1299,6 +1305,7 @@ INDIRECT_CALLABLE_SCOPE struct rt6_info *ip6_pol_route_lookup(struct net *net,
 	bool retry = false;
 
 	rcu_read_lock();
+	res.sernum = rt_genid_ipv6_sample(net);
 	fn = fib6_node_lookup(&table->tb6_root, &fl6->daddr, &fl6->saddr);
 restart:
 	res.f6i = rcu_dereference(fn->leaf);
@@ -2205,7 +2212,10 @@ static struct rt6_info *rt6_find_cached_rt(const struct fib6_result *res,
  * Dropping it instead would make every FIB change in the netns discard all
  * learned PMTUs and redirects.
  *
- * The copy is stamped like any dst built from this result. Caller holds
+ * The copy is stamped with the generation sampled before the FIB was read,
+ * like any dst built from this result, so @res must carry that sample:
+ * without it the copy would be stamped when it is allocated and could look
+ * current although the FIB changed after the lookup. Caller holds
  * rcu_read_lock().
  */
 static struct rt6_info *rt6_refresh_exception(const struct fib6_result *res,
@@ -2215,6 +2225,8 @@ static struct rt6_info *rt6_refresh_exception(const struct fib6_result *res,
 	const struct in6_addr *saddr = NULL;
 	struct rt6_info *nrt;
 	int err;
+
+	DEBUG_NET_WARN_ON_ONCE(!res->sernum);
 
 #ifdef CONFIG_IPV6_SUBTREES
 	if (old->rt6i_src.plen)
@@ -2660,6 +2672,7 @@ int fib6_table_lookup(struct net *net, struct fib6_table *table, int oif,
 {
 	struct fib6_node *fn, *saved_fn;
 
+	res->sernum = rt_genid_ipv6_sample(net);
 	fn = fib6_node_lookup(&table->tb6_root, &fl6->daddr, &fl6->saddr);
 	saved_fn = fn;
 
@@ -2775,6 +2788,17 @@ struct rt6_info *ip6_pol_route(struct net *net, struct fib6_table *table,
 		local_bh_enable();
 	}
 out:
+	/* A cached dst, pcpu or exception, can have been built or refreshed
+	 * by a lookup that ran after a FIB change landed behind our sample:
+	 * it is stamped with the newer generation and passes
+	 * rt6_get_pcpu_route() and the exception lookup, but our decision
+	 * predates that change. Make it fail ip6_dst_check() so that its
+	 * users look the route up again, as fib6_rule_lookup_done() does
+	 * across tables; this also covers callers that bypass that wrapper.
+	 */
+	if (rt && rt6_dst_sernum(rt) != res.sernum)
+		rt6_dst_invalidate(rt);
+
 	if (!rt)
 		rt = net->ipv6.ip6_null_entry;
 	if (!(flags & RT6_LOOKUP_F_DST_NOREF))
@@ -3478,6 +3502,8 @@ static void __ip6_rt_update_pmtu(struct dst_entry *dst, const struct sock *sk,
 
 		res.fib6_flags = res.f6i->fib6_flags;
 		res.fib6_type = res.f6i->fib6_type;
+		/* derived from @rt6: it is only as current as that dst */
+		res.sernum = rt6_dst_sernum(rt6);
 
 		if (res.f6i->nh) {
 			struct fib6_nh_match_arg arg = {
@@ -3657,6 +3683,7 @@ INDIRECT_CALLABLE_SCOPE struct rt6_info *__ip6_route_redirect(struct net *net,
 	 */
 
 	rcu_read_lock();
+	res.sernum = rt_genid_ipv6_sample(net);
 	fn = fib6_node_lookup(&table->tb6_root, &fl6->daddr, &fl6->saddr);
 restart:
 	for_each_fib6_node_rt_rcu(fn) {
@@ -4882,6 +4909,7 @@ static void rt6_do_redirect(struct dst_entry *dst, struct sock *sk, struct sk_bu
 
 	res.fib6_flags = res.f6i->fib6_flags;
 	res.fib6_type = res.f6i->fib6_type;
+	res.sernum = rt6_dst_sernum(rt);
 	nrt = ip6_rt_cache_alloc(&res, &msg->dest, NULL);
 	if (!nrt)
 		goto out;

@@ -96,10 +96,37 @@ int fib6_lookup(struct net *net, int oif, struct flowi6 *fl6,
 EXPORT_SYMBOL_GPL(fib6_lookup);
 #endif
 
+/* A dst that a table lookup returns is stamped with the generation sampled
+ * before that table was read, so a change that lands after the read cannot
+ * be folded into the stamp. A lookup that reads several tables, the local
+ * one and then the main one, or those the rules select, makes its decision
+ * from all of them. A route that is added to a table that was already read,
+ * and missed, while a later one is being read is not part of that decision,
+ * but the dst of the later table is stamped after the change and would look
+ * current. Sample before the first table, and if the dst carries a newer
+ * stamp a change landed in between: make it fail ip6_dst_check(), so that
+ * its users look the route up again.
+ */
+static struct dst_entry *fib6_rule_lookup_done(struct dst_entry *dst,
+					       int sernum)
+{
+	struct rt6_info *rt = dst_rt6_info(dst);
+
+	/* The static null, prohibit and blackhole entries are not made from a
+	 * route and not stamped
+	 */
+	if (rcu_access_pointer(rt->from) && rt6_dst_sernum(rt) != sernum)
+		rt6_dst_invalidate(rt);
+
+	return dst;
+}
+
 struct dst_entry *fib6_rule_lookup(struct net *net, struct flowi6 *fl6,
 				   const struct sk_buff *skb,
 				   int flags, pol_lookup_t lookup)
 {
+	int sernum = rt_genid_ipv6_sample(net);
+
 	if (net->ipv6.fib6_has_custom_rules) {
 		struct fib6_result res = {};
 		struct fib_lookup_arg arg = {
@@ -116,19 +143,19 @@ struct dst_entry *fib6_rule_lookup(struct net *net, struct flowi6 *fl6,
 				 flowi6_to_flowi(fl6), flags, &arg);
 
 		if (res.rt6)
-			return &res.rt6->dst;
+			return fib6_rule_lookup_done(&res.rt6->dst, sernum);
 	} else {
 		struct rt6_info *rt;
 
 		rt = pol_lookup_func(lookup,
 			     net, net->ipv6.fib6_local_tbl, fl6, skb, flags);
 		if (rt != net->ipv6.ip6_null_entry && rt->dst.error != -EAGAIN)
-			return &rt->dst;
+			return fib6_rule_lookup_done(&rt->dst, sernum);
 		ip6_rt_put_flags(rt, flags);
 		rt = pol_lookup_func(lookup,
 			     net, net->ipv6.fib6_main_tbl, fl6, skb, flags);
 		if (rt->dst.error != -EAGAIN)
-			return &rt->dst;
+			return fib6_rule_lookup_done(&rt->dst, sernum);
 		ip6_rt_put_flags(rt, flags);
 	}
 
