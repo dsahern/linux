@@ -1721,8 +1721,8 @@ static int rt6_insert_exception(struct rt6_info *nrt,
 	struct net *net = dev_net(nrt->dst.dev);
 	struct rt6_exception_bucket *bucket;
 	struct fib6_info *f6i = res->f6i;
+	struct rt6_exception *rt6_ex, *new_ex;
 	struct in6_addr *src_key = NULL;
-	struct rt6_exception *rt6_ex;
 	struct fib6_nh *nh = res->nh;
 	int max_depth;
 	int err = 0;
@@ -1765,19 +1765,24 @@ static int rt6_insert_exception(struct rt6_info *nrt,
 		goto out;
 	}
 
+	/* Allocate the new entry before the one it replaces is touched, so
+	 * that running out of memory leaves what was learned in place.
+	 */
+	new_ex = kzalloc_obj(*new_ex, GFP_ATOMIC);
+	if (!new_ex) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	new_ex->rt6i = nrt;
+	new_ex->stamp = jiffies;
+
 	rt6_ex = __rt6_find_exception_spinlock(&bucket, &nrt->rt6i_dst.addr,
 					       src_key);
 	if (rt6_ex)
 		rt6_remove_exception(bucket, rt6_ex);
 
-	rt6_ex = kzalloc_obj(*rt6_ex, GFP_ATOMIC);
-	if (!rt6_ex) {
-		err = -ENOMEM;
-		goto out;
-	}
-	rt6_ex->rt6i = nrt;
-	rt6_ex->stamp = jiffies;
-	hlist_add_head_rcu(&rt6_ex->hlist, &bucket->chain);
+	hlist_add_head_rcu(&new_ex->hlist, &bucket->chain);
 	bucket->depth++;
 	rt6_exception_net(nrt)->ipv6.rt6_stats->fib_rt_cache++;
 
