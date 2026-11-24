@@ -1735,6 +1735,13 @@ static void fib6_nh_invalidate_pcpu(const struct fib6_nh *nh)
 	if (!nh->rt6i_pcpu)
 		return;
 
+	/* The exception was published before this call. Pairs with the
+	 * cmpxchg() in rt6_make_pcpu_route(): either we see a pcpu dst
+	 * installed by a lookup that missed the exception, or that lookup's
+	 * re-check in ip6_pol_route() sees the exception.
+	 */
+	smp_mb();
+
 	rcu_read_lock();
 	for_each_possible_cpu(cpu) {
 		struct rt6_info *pcpu_rt;
@@ -2363,8 +2370,25 @@ struct rt6_info *ip6_pol_route(struct net *net, struct fib6_table *table,
 		local_bh_disable();
 		rt = rt6_get_pcpu_route(&res);
 
-		if (!rt)
+		if (!rt) {
 			rt = rt6_make_pcpu_route(net, &res);
+
+			/* The exception lookup above may have raced with
+			 * rt6_insert_exception(), whose pcpu invalidation
+			 * skips slots that are still empty. The cmpxchg() in
+			 * rt6_make_pcpu_route() orders the install before this
+			 * lookup, so a miss here means the writer's
+			 * invalidation sees our dst and zeroes its sernum.
+			 */
+			if (rt) {
+				struct rt6_info *excp;
+
+				excp = rt6_find_cached_rt(&res, &fl6->daddr,
+							  &fl6->saddr);
+				if (excp)
+					rt = excp;
+			}
+		}
 
 		local_bh_enable();
 	}
