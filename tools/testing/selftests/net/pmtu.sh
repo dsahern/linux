@@ -198,6 +198,14 @@
 # - pmtu_ipv6_route_change
 #	Same as above but with IPv6
 #
+# - pmtu_ipv6_cached_del
+#	Use the same topology as in pmtu_ipv6. Learn a PMTU from a packet too big
+#	message, change the FIB with an unrelated route add and, without looking
+#	the destination up in between, delete the cached exception. Check that
+#	neither a route lookup nor a packet that does not exceed the PMTU
+#	brings the exception back, and that a packet that does exceed it
+#	creates a new one
+#
 # - pmtu_ipv4_mp_exceptions
 #	Use the same topology as in pmtu_ipv4, but add routeable addresses
 #	on host A and B on lo reachable via both routers. Host A and B
@@ -272,6 +280,7 @@ tests="
 	list_flush_ipv6_exception	ipv6: list and flush cached exceptions	1
 	pmtu_ipv4_route_change		ipv4: PMTU exception w/route replace	1
 	pmtu_ipv6_route_change		ipv6: PMTU exception w/route replace	1
+	pmtu_ipv6_cached_del		ipv6: delete a cached PMTU exception after a FIB change	1
 	pmtu_ipv4_mp_exceptions		ipv4: PMTU multipath nh exceptions	1"
 
 # Addressing and routing for tests with routers: four network segments, with
@@ -2375,6 +2384,87 @@ test_pmtu_ipv4_route_change() {
 
 test_pmtu_ipv6_route_change() {
 	test_pmtu_ipvX_route_change 6
+}
+
+# Is there a cached exception for ${2} in the namespace ${1}? Dumping the cache
+# does not look the destination up, so it does not touch the exception
+cached_exception_exists() {
+	ns_cmd="${1}"
+	dst="${2}"
+
+	${ns_cmd} ip -oneline -6 route list cache | grep -qw -- "${dst}"
+}
+
+test_pmtu_ipv6_cached_del() {
+	setup namespaces routing || return $ksft_skip
+	trace "${ns_a}"  veth_A-R1    "${ns_r1}" veth_R1-A \
+	      "${ns_r1}" veth_R1-B    "${ns_b}"  veth_B-R1 \
+	      "${ns_a}"  veth_A-R2    "${ns_r2}" veth_R2-A \
+	      "${ns_r2}" veth_R2-B    "${ns_b}"  veth_B-R2
+
+	dst="${prefix6}:${b_r1}::1"
+
+	# Set up initial MTU values
+	mtu "${ns_a}"  veth_A-R1 2000
+	mtu "${ns_r1}" veth_R1-A 2000
+	mtu "${ns_r1}" veth_R1-B 1400
+	mtu "${ns_b}"  veth_B-R1 1400
+
+	mtu "${ns_a}"  veth_A-R2 2000
+	mtu "${ns_r2}" veth_R2-A 2000
+	mtu "${ns_r2}" veth_R2-B 1500
+	mtu "${ns_b}"  veth_B-R2 1500
+
+	# Learn a PMTU from a packet too big message
+	run_cmd ${ns_a} ${ping6} -q -M want -i 0.1 -w 1 -s 1800 ${dst}
+
+	pmtu="$(route_get_dst_pmtu_from_exception "${ns_a}" ${dst})"
+	check_pmtu_value "1400" "${pmtu}" "exceeding MTU" || return 1
+
+	# Change the FIB with a route that has nothing to do with ${dst}. Any
+	# FIB change makes the cached dsts of the namespace stale. Do not look
+	# ${dst} up from here to the deletion: that would refresh the
+	# exception
+	run_cmd ${ns_a} ip -6 route add unreachable "${prefix6}:ff::/64"
+
+	if ! cached_exception_exists "${ns_a}" ${dst}; then
+		err "  PMTU exception disappeared after an unrelated route add"
+		return 1
+	fi
+
+	# Delete the cached exception
+	run_cmd ${ns_a} ip -6 route flush cached ${dst}
+
+	if cached_exception_exists "${ns_a}" ${dst}; then
+		err "  PMTU exception still there after deleting it"
+		return 1
+	fi
+
+	# A lookup must not bring it back
+	run_cmd ${ns_a} ip -6 route get ${dst}
+
+	if cached_exception_exists "${ns_a}" ${dst}; then
+		err "  PMTU exception came back after a route lookup"
+		return 1
+	fi
+
+	# Neither must a packet that fits, which looks the route up as well
+	run_cmd ${ns_a} ${ping6} -q -c 1 -w 1 -s 1000 ${dst}
+
+	pmtu="$(route_get_dst_pmtu_from_exception "${ns_a}" ${dst})"
+	check_pmtu_value "" "${pmtu}" "deleting the exception and a lookup" || return 1
+
+	if cached_exception_exists "${ns_a}" ${dst}; then
+		err "  PMTU exception came back after a packet that fits"
+		return 1
+	fi
+
+	# A packet that exceeds the PMTU does, through a new packet too big
+	# message. This is what learning it again looks like
+	run_cmd ${ns_a} ${ping6} -q -M want -i 0.1 -w 1 -s 1800 ${dst}
+
+	pmtu="$(route_get_dst_pmtu_from_exception "${ns_a}" ${dst})"
+	check_pmtu_value "1400" "${pmtu}" "exceeding MTU after the deletion" || return 1
 }
 
 test_pmtu_ipv4_mp_exceptions() {
