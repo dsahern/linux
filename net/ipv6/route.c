@@ -1832,6 +1832,7 @@ out:
 	if (!err) {
 		spin_lock_bh(&f6i->fib6_table->tb6_lock);
 		fib6_update_sernum(net, f6i);
+		fib6_update_excp_seq(f6i);
 		fib6_add_gc_list(f6i);
 		spin_unlock_bh(&f6i->fib6_table->tb6_lock);
 		fib6_force_start_gc(net);
@@ -6122,11 +6123,15 @@ static int rt6_nh_dump_exceptions(struct fib6_nh *nh, void *arg)
 				continue;
 			}
 
-			/* Expiration of entries doesn't bump sernum, insertion
-			 * does. Removal is triggered by insertion, so we can
-			 * rely on the fact that if entries change between two
-			 * partial dumps, this node is scanned again completely,
-			 * see rt6_insert_exception() and fib6_dump_table().
+			/* Expiration of entries doesn't bump anything. An
+			 * insertion on the root node changes the root's
+			 * fn_sernum or tb6_excp_seq, and removal is triggered
+			 * by insertion, so if entries of the root change
+			 * between two partial dumps, the table is scanned
+			 * again, see rt6_insert_exception() and
+			 * fib6_dump_table(). A change under any other node is
+			 * not noticed: a dump suspended in the middle of that
+			 * route's exceptions can skip or repeat some of them.
 			 *
 			 * Count expired entries we go through as handled
 			 * entries that we'll skip next time, in case of partial
