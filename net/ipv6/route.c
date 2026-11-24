@@ -115,6 +115,10 @@ static int rt6_fill_node(struct net *net, struct sk_buff *skb,
 static struct rt6_info *rt6_find_cached_rt(const struct fib6_result *res,
 					   const struct in6_addr *daddr,
 					   const struct in6_addr *saddr);
+static struct rt6_info *
+rt6_find_cached_rt_refresh(const struct fib6_result *res,
+			   const struct in6_addr *daddr,
+			   const struct in6_addr *saddr);
 
 #ifdef CONFIG_IPV6_ROUTE_INFO
 static struct fib6_info *rt6_add_route_info(struct net *net,
@@ -1326,7 +1330,7 @@ restart:
 			 fl6->flowi6_oif != 0, skb, flags);
 
 	/* Search through exception table */
-	rt = rt6_find_cached_rt(&res, &fl6->daddr, &fl6->saddr);
+	rt = rt6_find_cached_rt_refresh(&res, &fl6->daddr, &fl6->saddr);
 	if (rt) {
 		if (ip6_hold_safe(net, &rt))
 			dst_use_noref(&rt->dst, jiffies);
@@ -1753,8 +1757,12 @@ static void fib6_nh_invalidate_pcpu(const struct fib6_nh *nh)
 	rcu_read_unlock();
 }
 
-static int rt6_insert_exception(struct rt6_info *nrt,
-				const struct fib6_result *res)
+/* @refresh: @nrt replaces a stale copy of the same exception. Nothing new
+ * applies to dsts cached on the nexthop, so they are not invalidated, and a
+ * valid exception that someone else already installed is kept (-EEXIST).
+ */
+static int __rt6_insert_exception(struct rt6_info *nrt,
+				  const struct fib6_result *res, bool refresh)
 {
 	struct net *net = dev_net(nrt->dst.dev);
 	struct rt6_exception_bucket *bucket;
@@ -1805,8 +1813,14 @@ static int rt6_insert_exception(struct rt6_info *nrt,
 
 	rt6_ex = __rt6_find_exception_spinlock(&bucket, &nrt->rt6i_dst.addr,
 					       src_key);
-	if (rt6_ex)
+	if (rt6_ex) {
+		if (refresh && rt6_is_valid(rt6_ex->rt6i) &&
+		    !rt6_check_expired(rt6_ex->rt6i)) {
+			err = -EEXIST;
+			goto out;
+		}
 		rt6_remove_exception(bucket, rt6_ex);
+	}
 
 	rt6_ex = kzalloc_obj(*rt6_ex, GFP_ATOMIC);
 	if (!rt6_ex) {
@@ -1827,7 +1841,7 @@ static int rt6_insert_exception(struct rt6_info *nrt,
 out:
 	spin_unlock_bh(&rt6_exception_lock);
 
-	if (!err) {
+	if (!err && !refresh) {
 		fib6_nh_invalidate_pcpu(nh);
 
 		spin_lock_bh(&f6i->fib6_table->tb6_lock);
@@ -1838,6 +1852,12 @@ out:
 	}
 
 	return err;
+}
+
+static int rt6_insert_exception(struct rt6_info *nrt,
+				const struct fib6_result *res)
+{
+	return __rt6_insert_exception(nrt, res, false);
 }
 
 static void fib6_nh_flush_exceptions(struct fib6_nh *nh, struct fib6_info *from)
@@ -1889,9 +1909,10 @@ void rt6_flush_exceptions(struct fib6_info *f6i)
 /* Find cached rt in the hash table inside passed in rt
  * Caller has to hold rcu_read_lock()
  */
-static struct rt6_info *rt6_find_cached_rt(const struct fib6_result *res,
-					   const struct in6_addr *daddr,
-					   const struct in6_addr *saddr)
+static struct rt6_info *__rt6_find_cached_rt(const struct fib6_result *res,
+					     const struct in6_addr *daddr,
+					     const struct in6_addr *saddr,
+					     struct rt6_info **stale)
 {
 	const struct in6_addr *src_key = NULL;
 	struct rt6_exception_bucket *bucket;
@@ -1920,10 +1941,14 @@ find_ex:
 	if (rt6_ex && !rt6_check_expired(rt6_ex->rt6i)) {
 		ret = rt6_ex->rt6i;
 		/* Do not re-stamp a stale exception: other holders must
-		 * keep seeing it as stale. Treat it as a miss instead.
+		 * keep seeing it as stale. Treat it as a miss instead, and
+		 * hand it to callers that can replace it.
 		 */
-		if (!rt6_is_valid(ret))
+		if (!rt6_is_valid(ret)) {
+			if (stale)
+				*stale = ret;
 			ret = NULL;
+		}
 	}
 
 #ifdef CONFIG_IPV6_SUBTREES
@@ -1935,6 +1960,85 @@ find_ex:
 #endif
 
 	return ret;
+}
+
+static struct rt6_info *rt6_find_cached_rt(const struct fib6_result *res,
+					   const struct in6_addr *daddr,
+					   const struct in6_addr *saddr)
+{
+	return __rt6_find_cached_rt(res, daddr, saddr, NULL);
+}
+
+/* Exception state that is not inherited from the fib6_info */
+#define RT6_EXCP_STATE	(RTF_GATEWAY | RTF_DYNAMIC | RTF_MODIFIED | RTF_EXPIRES)
+
+/* Replace a stale exception with a current copy of it.
+ *
+ * Validity is a property of the dst and the dsts held by sockets and
+ * dst_caches must stay stale, so @old cannot be re-stamped. Its content (the
+ * learned PMTU or redirect gateway) is still right though: it lives on the
+ * nexthop this lookup just selected, and nexthop or route removal flushes it.
+ * Dropping it instead would make every FIB change in the netns discard all
+ * learned PMTUs and redirects.
+ *
+ * The copy is stamped with the generation sampled before the FIB was read,
+ * like any dst built from this result. Caller holds rcu_read_lock().
+ */
+static struct rt6_info *rt6_refresh_exception(const struct fib6_result *res,
+					      struct rt6_info *old)
+{
+	const struct in6_addr *saddr = NULL;
+	struct rt6_info *nrt;
+	u32 mtu;
+	int err;
+
+#ifdef CONFIG_IPV6_SUBTREES
+	if (old->rt6i_src.plen)
+		saddr = &old->rt6i_src.addr;
+#endif
+	nrt = ip6_rt_cache_alloc(res, &old->rt6i_dst.addr, saddr);
+	if (!nrt)
+		return NULL;
+
+	nrt->rt6i_flags = (nrt->rt6i_flags & ~RT6_EXCP_STATE) |
+			  (old->rt6i_flags & RT6_EXCP_STATE);
+	nrt->rt6i_gateway = old->rt6i_gateway;
+
+	mtu = dst_metric_raw(&old->dst, RTAX_MTU);
+	if (mtu != dst_metric_raw(&nrt->dst, RTAX_MTU))
+		dst_metric_set(&nrt->dst, RTAX_MTU, mtu);
+	if (old->rt6i_flags & RTF_EXPIRES)
+		WRITE_ONCE(nrt->dst.expires, READ_ONCE(old->dst.expires));
+
+	err = __rt6_insert_exception(nrt, res, true);
+	if (!err)
+		return nrt;
+
+	dst_release_immediate(&nrt->dst);
+
+	/* Lost a race with another refresh: use its result */
+	if (err == -EEXIST)
+		return __rt6_find_cached_rt(res, &old->rt6i_dst.addr, saddr,
+					    NULL);
+	return NULL;
+}
+
+/* rt6_find_cached_rt() for the lookup paths that hand the result to users:
+ * a stale exception is replaced by a current copy instead of being lost.
+ * Caller holds rcu_read_lock().
+ */
+static struct rt6_info *
+rt6_find_cached_rt_refresh(const struct fib6_result *res,
+			   const struct in6_addr *daddr,
+			   const struct in6_addr *saddr)
+{
+	struct rt6_info *stale = NULL, *rt;
+
+	rt = __rt6_find_cached_rt(res, daddr, saddr, &stale);
+	if (!rt && stale)
+		rt = rt6_refresh_exception(res, stale);
+
+	return rt;
 }
 
 /* Remove the passed in cached rt from the hash table that contains it */
@@ -2342,7 +2446,7 @@ struct rt6_info *ip6_pol_route(struct net *net, struct fib6_table *table,
 	fib6_select_path(net, &res, fl6, oif, have_oif_match, skb, strict);
 
 	/*Search through exception table */
-	rt = rt6_find_cached_rt(&res, &fl6->daddr, &fl6->saddr);
+	rt = rt6_find_cached_rt_refresh(&res, &fl6->daddr, &fl6->saddr);
 	if (rt) {
 		goto out;
 	} else if (unlikely((fl6->flowi6_flags & FLOWI_FLAG_KNOWN_NH) &&
@@ -2383,8 +2487,9 @@ struct rt6_info *ip6_pol_route(struct net *net, struct fib6_table *table,
 			if (rt) {
 				struct rt6_info *excp;
 
-				excp = rt6_find_cached_rt(&res, &fl6->daddr,
-							  &fl6->saddr);
+				excp = rt6_find_cached_rt_refresh(&res,
+								  &fl6->daddr,
+								  &fl6->saddr);
 				if (excp)
 					rt = excp;
 			}
