@@ -1546,6 +1546,34 @@ static struct net *rt6_exception_net(const struct rt6_info *rt)
 	return container_of(rt->dst.ops, struct net, ipv6.ip6_dst_ops);
 }
 
+/* Lower the MTU in the metrics of @rt to @mtu.
+ *
+ * A dst shares the read-only metrics of its route until it needs its own.
+ * Allocating them can fail, and dst_metric_set() does not say: the PMTU would
+ * be lost.
+ *
+ * Only ever lower it, and with a compare and exchange: PMTU handlers update a
+ * dst in place without a lock, and each decides to lower the MTU from a value
+ * it read earlier, so storing unconditionally could overwrite a smaller value
+ * that another handler stored in between.
+ */
+static int rt6_lower_mtu(struct rt6_info *rt, u32 mtu)
+{
+	u32 *metrics = dst_metrics_write_ptr(&rt->dst);
+	u32 old;
+
+	if (!metrics)
+		return -ENOMEM;
+
+	old = READ_ONCE(metrics[RTAX_MTU - 1]);
+	do {
+		if (old && old <= mtu)
+			break;
+	} while (!try_cmpxchg(&metrics[RTAX_MTU - 1], &old, mtu));
+
+	return 0;
+}
+
 /* Remove rt6_ex from hash table and free the memory
  * Caller must hold rt6_exception_lock
  */
@@ -2913,13 +2941,23 @@ static void rt6_update_expires(struct rt6_info *rt0, int timeout)
 	rt0->rt6i_flags |= RTF_EXPIRES;
 }
 
-static void rt6_do_update_pmtu(struct rt6_info *rt, u32 mtu)
+static int rt6_do_update_pmtu(struct rt6_info *rt, u32 mtu)
 {
 	struct net *net = dev_net(rt->dst.dev);
+	int err;
 
-	dst_metric_set(&rt->dst, RTAX_MTU, mtu);
+	/* If the MTU cannot be stored the PMTU would be lost and, for a new
+	 * exception, an exception would be inserted that does not lower
+	 * anything.
+	 */
+	err = rt6_lower_mtu(rt, mtu);
+	if (err)
+		return err;
+
 	rt->rt6i_flags |= RTF_MODIFIED;
 	rt6_update_expires(rt, READ_ONCE(net->ipv6.sysctl.ip6_rt_mtu_expires));
+
+	return 0;
 }
 
 static bool rt6_cache_allowed_for_pmtu(const struct rt6_info *rt)
@@ -2960,7 +2998,11 @@ static void __ip6_rt_update_pmtu(struct dst_entry *dst, const struct sock *sk,
 		return;
 
 	if (!rt6_cache_allowed_for_pmtu(rt6)) {
-		rt6_do_update_pmtu(rt6, mtu);
+		/* If the update cannot be made, the next packet too big that
+		 * exceeds this dst's MTU triggers it again
+		 */
+		if (rt6_do_update_pmtu(rt6, mtu))
+			return;
 		/* update rt6_ex->stamp for cache */
 		if (rt6->rt6i_flags & RTF_CACHE)
 			rt6_update_exception_stamp_rt(rt6);
@@ -2998,8 +3040,8 @@ static void __ip6_rt_update_pmtu(struct dst_entry *dst, const struct sock *sk,
 
 		nrt6 = ip6_rt_cache_alloc(&res, daddr, saddr);
 		if (nrt6) {
-			rt6_do_update_pmtu(nrt6, mtu);
-			if (rt6_insert_exception(nrt6, &res))
+			if (rt6_do_update_pmtu(nrt6, mtu) ||
+			    rt6_insert_exception(nrt6, &res))
 				dst_release_immediate(&nrt6->dst);
 		}
 out_unlock:
