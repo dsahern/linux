@@ -300,9 +300,14 @@ static inline u32 rt6_get_cookie(const struct rt6_info *rt)
 {
 	struct fib6_info *from;
 	u32 cookie = 0;
+	int sernum;
 
-	if (rt->sernum)
-		return rt->sernum;
+	/* Can be stale-marked concurrently (rt6_dst_invalidate()): test and
+	 * return one sample.
+	 */
+	sernum = READ_ONCE(rt->sernum);
+	if (sernum)
+		return sernum;
 
 	rcu_read_lock();
 
@@ -313,6 +318,24 @@ static inline u32 rt6_get_cookie(const struct rt6_info *rt)
 	rcu_read_unlock();
 
 	return cookie;
+}
+
+/* An invalidated dst keeps the generation it was built under in the low
+ * bits, so state derived from it (exceptions) can be stamped with the FIB
+ * state it actually came from. The top bit makes it fail rt6_is_valid():
+ * the netns generation is always positive.
+ */
+#define RT6_SERNUM_STALE	INT_MIN
+
+static inline void rt6_dst_invalidate(struct rt6_info *rt)
+{
+	int sernum = READ_ONCE(rt->sernum);
+
+	/* Do not dirty the cache line of a dst that other CPUs read on the
+	 * fast path when it is already stale.
+	 */
+	if (!(sernum & RT6_SERNUM_STALE))
+		WRITE_ONCE(rt->sernum, sernum | RT6_SERNUM_STALE);
 }
 
 static inline void ip6_rt_put(struct rt6_info *rt)
