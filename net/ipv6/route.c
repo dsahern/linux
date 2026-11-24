@@ -1483,7 +1483,13 @@ static struct rt6_info *rt6_get_pcpu_route(const struct fib6_result *res)
 		/* Paired with READ_ONCE() in __fib6_drop_pcpu_from() */
 		prev = xchg(p, NULL);
 		if (prev) {
-			dst_dev_put(&prev->dst);
+			/* Holders may still be using it until they notice it
+			 * is stale, so keep it working rather than dst_dev_put()
+			 * it, which would turn the packets of anyone who has
+			 * not rechecked yet into drops. Device unregister
+			 * detaches it like any other uncached dst.
+			 */
+			rt6_uncached_list_add(prev);
 			dst_release(&prev->dst);
 		}
 
