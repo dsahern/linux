@@ -1752,7 +1752,7 @@ static void fib6_nh_invalidate_pcpu(const struct fib6_nh *nh)
 
 		pcpu_rt = READ_ONCE(*per_cpu_ptr(nh->rt6i_pcpu, cpu));
 		if (pcpu_rt)
-			WRITE_ONCE(pcpu_rt->sernum, 0);
+			rt6_dst_invalidate(pcpu_rt);
 	}
 	rcu_read_unlock();
 }
@@ -3036,11 +3036,12 @@ static void ip6_link_failure(struct sk_buff *skb)
 			struct fib6_info *from;
 
 			/* Force sockets using this dst to look the route up
-			 * again; 0 never matches the netns generation.
+			 * again; a stale-marked sernum never matches the
+			 * netns generation.
 			 */
 			from = rcu_dereference(rt->from);
 			if (from && (rt->rt6i_flags & RTF_DEFAULT))
-				WRITE_ONCE(rt->sernum, 0);
+				rt6_dst_invalidate(rt);
 		}
 		rcu_read_unlock();
 	}
@@ -3125,7 +3126,7 @@ static void __ip6_rt_update_pmtu(struct dst_entry *dst, const struct sock *sk,
 		res.fib6_flags = res.f6i->fib6_flags;
 		res.fib6_type = res.f6i->fib6_type;
 		/* derived from @rt6: it is only as current as that dst */
-		res.sernum = READ_ONCE(rt6->sernum);
+		res.sernum = rt6_dst_sernum(rt6);
 
 		if (res.f6i->nh) {
 			struct fib6_nh_match_arg arg = {
@@ -4523,7 +4524,7 @@ static void rt6_do_redirect(struct dst_entry *dst, struct sock *sk, struct sk_bu
 
 	res.fib6_flags = res.f6i->fib6_flags;
 	res.fib6_type = res.f6i->fib6_type;
-	res.sernum = READ_ONCE(rt->sernum);
+	res.sernum = rt6_dst_sernum(rt);
 	nrt = ip6_rt_cache_alloc(&res, &msg->dest, NULL);
 	if (!nrt)
 		goto out;

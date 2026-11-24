@@ -286,6 +286,24 @@ static inline u32 rt6_get_cookie(const struct rt6_info *rt)
 	return READ_ONCE(rt->sernum);
 }
 
+/* An invalidated dst keeps the generation it was built under in the low
+ * bits, so state derived from it (exceptions) can be stamped with the FIB
+ * state it actually came from. The top bit makes it fail rt6_is_valid():
+ * the netns generation is always positive.
+ */
+#define RT6_SERNUM_STALE	INT_MIN
+
+static inline void rt6_dst_invalidate(struct rt6_info *rt)
+{
+	WRITE_ONCE(rt->sernum, READ_ONCE(rt->sernum) | RT6_SERNUM_STALE);
+}
+
+/* The generation @rt was built under, whether or not it is still valid */
+static inline int rt6_dst_sernum(const struct rt6_info *rt)
+{
+	return READ_ONCE(rt->sernum) & ~RT6_SERNUM_STALE;
+}
+
 static inline void ip6_rt_put(struct rt6_info *rt)
 {
 	/* dst_release() accepts a NULL parameter.
