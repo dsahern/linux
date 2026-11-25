@@ -14,7 +14,7 @@ TESTS="unregister down carrier nexthop suppress ipv6_notify ipv4_notify \
        ipv4_mpath_list ipv6_mpath_list ipv4_mpath_balance ipv6_mpath_balance \
        ipv4_mpath_balance_preferred ipv4_mpath_oif ipv4_mpath_oif_nh \
        ipv4_mpath_oif_vrf ipv6_mpath_oif ipv6_mpath_oif_nh ipv6_mpath_oif_vrf \
-       fib6_ra_to_static fib6_temp_addr_renewal"
+       fib6_ra_to_static fib6_temp_addr_renewal ipv6_nh_pcpu_stale"
 
 VERBOSE=0
 PAUSE_ON_FAIL=no
@@ -3228,6 +3228,56 @@ ipv6_mpath_oif_vrf_test()
 	cleanup
 }
 
+ipv6_nh_pcpu_stale_test()
+{
+	local cpu
+
+	echo
+	echo "IPv6 nexthop object stale pcpu dst test"
+
+	if [ ! -x "$(command -v taskset)" ]; then
+		echo "SKIP: taskset not installed"
+		return $ksft_skip
+	fi
+
+	if [ $(nproc) -lt 2 ]; then
+		echo "SKIP: pcpu test requires multiple cpus"
+		return $ksft_skip
+	fi
+
+	setup
+
+	set -e
+	setup_ns ns2
+	$IP link add veth1 type veth peer name veth2 netns $ns2
+	$IP link set veth1 up
+	$IP -6 address add 2001:db8:10::1/64 dev veth1 nodad
+	ip -netns $ns2 link set lo up
+	ip -netns $ns2 address add 2001:db8:11::1/128 dev lo
+	ip netns exec $ns2 sysctl -qw net.ipv6.conf.all.forwarding=1
+	ip -netns $ns2 link set veth2 up
+	ip -netns $ns2 -6 address add 2001:db8:10::2/64 dev veth2 nodad
+
+	$IP -6 nexthop add id 100 via 2001:db8:10::2 dev veth1
+	$IP -6 route add 2001:db8:11::1/128 nhid 100
+	set +e
+
+	# create a pcpu dst entry on cpu 0
+	taskset -a -c 0 $IP -6 route get 2001:db8:11::1 &> /dev/null
+
+	# re-add the route entry
+	$IP -6 route del 2001:db8:11::1
+	$IP -6 route add 2001:db8:11::1/128 nhid 100
+
+	# cached dst on cpu 0 must have been invalidated
+	for cpu in 0 1; do
+		taskset -a -c $cpu $IP -6 route get 2001:db8:11::1 &> /dev/null
+		log_test $? 0 "Route get on cpu $cpu after route re-add"
+	done
+
+	cleanup
+}
+
 ################################################################################
 # usage
 
@@ -3322,6 +3372,7 @@ do
 	ipv6_mpath_oif_vrf)		ipv6_mpath_oif_vrf_test;;
 	fib6_ra_to_static)		fib6_ra_to_static;;
 	fib6_temp_addr_renewal)		fib6_temp_addr_renewal;;
+	ipv6_nh_pcpu_stale)		ipv6_nh_pcpu_stale_test;;
 
 	help) echo "Test names: $TESTS"; exit 0;;
 	esac
