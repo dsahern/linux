@@ -40,6 +40,12 @@ readonly dip_v4=172.16.0.1
 readonly rip_v4=172.16.0.2
 readonly sip_v4=10.0.0.3
 
+readonly vip_v6=fd00:3::1
+readonly cip_v6=fd00:1::2
+readonly gip_v6=fd00:1::1
+readonly dip_v6=fd00:2::1
+readonly rip_v6=fd00:2::2
+
 readonly infile="$(mktemp)"
 readonly outfile="$(mktemp)"
 readonly datalen=32
@@ -54,6 +60,7 @@ fi
 
 checktool "ipvsadm -v" "run test without ipvsadm"
 checktool "socat -h" "run test without socat"
+checktool "python3 -c pass" "run test without python3"
 
 setup() {
 	setup_ns ns0 ns1 ns2
@@ -169,6 +176,74 @@ test_tun() {
 	test_service
 }
 
+# Send one UDP datagram of ${2} bytes from the client to the IPv6 service and
+# keep the socket open for a moment, so that a packet too big message for it
+# is accepted.
+udp_send_v6() {
+	ip netns exec "${ns0}" python3 -c '
+import socket, sys, time
+s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+s.bind((sys.argv[1], 0))
+s.sendto(b"x" * int(sys.argv[3]), (sys.argv[2], int(sys.argv[4])))
+time.sleep(0.5)
+' "${cip_v6}" "${vip_v6}" "${1}" "${port}"
+}
+
+# Send a packet too big message with MTU ${1} for ${dip_v6} -> ${rip_v6} from
+# the real server to the director. The director sees what a router on the path
+# to the real server would tell it, and learns a PMTU exception for ${rip_v6}.
+send_ptb_v6() {
+	ip netns exec "${ns2}" python3 -c '
+import socket, struct, sys
+src, dst, mtu = sys.argv[1], sys.argv[2], int(sys.argv[3])
+inner = struct.pack("!IHBB", 6 << 28, 8, 58, 64)
+inner += socket.inet_pton(socket.AF_INET6, src)
+inner += socket.inet_pton(socket.AF_INET6, dst)
+inner += struct.pack("!BBHHH", 128, 0, 0, 0, 0)
+msg = struct.pack("!BBHI", 2, 0, 0, mtu) + inner
+s = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_ICMPV6)
+s.sendto(msg, (src, 0))
+' "${dip_v6}" "${rip_v6}" "${1}"
+}
+
+# The director keeps the route to a real server for as long as it passes
+# ip6_dst_check(). In DR mode that is a FLOWI_FLAG_KNOWN_NH clone, which is not
+# cached on the nexthop. A PMTU learned for the real server after the route was
+# cached must still reach it: packets that exceed the PMTU must get a packet
+# too big message back to the client.
+test_dr_v6_pmtu() {
+	ip netns exec "${ns0}" ip addr add "${cip_v6}/64" dev br0 nodad
+	ip netns exec "${ns0}" ip route add "${vip_v6}/128" via "${gip_v6}" dev br0
+
+	ip netns exec "${ns1}" ip addr add "${gip_v6}/64" dev veth10 nodad
+	ip netns exec "${ns1}" ip addr add "${dip_v6}/64" dev veth12 nodad
+	ip netns exec "${ns1}" ip addr add "${vip_v6}/128" dev lo nodad
+	ip netns exec "${ns1}" ipvsadm -A -u "[${vip_v6}]:${port}" -s rr
+	ip netns exec "${ns1}" ipvsadm -a -u "[${vip_v6}]:${port}" \
+		-r "[${rip_v6}]:${port}" -g
+
+	ip netns exec "${ns2}" ip addr add "${rip_v6}/64" dev veth21 nodad
+	ip netns exec "${ns2}" ip addr add "${vip_v6}/128" dev lo nodad
+
+	# Let the director cache its route to the real server
+	udp_send_v6 100
+
+	send_ptb_v6 1280
+	sleep 0.2
+	if ! ip netns exec "${ns1}" ip -6 route get "${rip_v6}" | grep -q "mtu 1280"; then
+		echo "FAIL: director did not learn the PMTU of the real server"
+		return 1
+	fi
+
+	# A datagram that exceeds the PMTU must be answered with a packet too
+	# big message, which gives the client a PMTU for the service
+	udp_send_v6 1400
+	if ! ip netns exec "${ns0}" ip -6 route get "${vip_v6}" | grep -q "mtu 1280"; then
+		echo "FAIL: director kept using a route that bypasses the learned PMTU"
+		return 1
+	fi
+}
+
 run_tests() {
 	local errors=
 
@@ -188,6 +263,12 @@ run_tests() {
 	cleanup
 	setup
 	test_tun
+	errors=$(( $errors + $? ))
+
+	echo "Testing IPv6 DR mode PMTU..."
+	cleanup
+	setup
+	test_dr_v6_pmtu
 	errors=$(( $errors + $? ))
 
 	return $errors
